@@ -143,7 +143,7 @@ export default function ItemGrid({ initialItems }: Props) {
       <div className="w-full px-4 md:px-4 pt-5 pb-4 flex flex-col md:flex-row gap-4 items-start">
 
         {/* ── Left Sidebar ── */}
-        <div className="w-full md:w-52 shrink-0 flex flex-col gap-2 md:sticky md:top-6 z-10">
+        <div className="w-full md:w-52 shrink-0 flex flex-col gap-2 md:sticky md:top-20 z-10">
 
           {/* Low stock compact alert — above search */}
           <LowStockSidebar items={items} />
