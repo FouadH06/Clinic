@@ -5,7 +5,7 @@ interface Option {
   label: string
 }
 
-interface Props extends React.SelectHTMLAttributes<HTMLSelectElement> {
+interface Props extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   options: Option[]
   placeholder?: string
   size?: 'sm' | 'md'
