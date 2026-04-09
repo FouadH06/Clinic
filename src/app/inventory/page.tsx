@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: 'Manage all inventory items, edit stock levels, and import/export data.',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function InventoryPage() {
   const supabase = await createClient()
 

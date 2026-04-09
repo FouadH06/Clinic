@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: 'Manage dental supply vendors and their contact information.',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function SuppliersPage() {
   const supabase = await createClient()
 

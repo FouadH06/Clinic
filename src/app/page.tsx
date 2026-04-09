@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: 'Quickly log item usage and monitor stock levels in real time.',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardPage() {
   const supabase = await createClient()
 

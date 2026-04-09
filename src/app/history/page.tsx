@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: 'Full usage log of all consumed dental supplies over time.',
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function HistoryPage() {
   const supabase = await createClient()
 
