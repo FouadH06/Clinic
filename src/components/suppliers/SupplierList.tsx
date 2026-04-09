@@ -4,6 +4,20 @@ import { useState } from 'react'
 import { Supplier, Item } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 
+// Defined at module scope so React never recreates the component type on re-render
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-0.5">{label}</label>
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full px-2.5 py-1.5 text-sm border border-teal-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300"
+      />
+    </div>
+  )
+}
+
 interface SupplierWithItems extends Supplier {
   items?: Pick<Item, 'id' | 'name' | 'icon'>[]
 }
@@ -61,18 +75,9 @@ export default function SupplierList({ initialSuppliers }: Props) {
     setSaving(false)
   }
 
-  const Field = ({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) => (
-    <div>
-      <label className="block text-xs text-gray-500 mb-0.5">{label}</label>
-      <input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full px-2.5 py-1.5 text-sm border border-teal-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300"
-      />
-    </div>
-  )
 
   return (
+
     <div>
       {/* Add button */}
       <div className="flex justify-between items-center mb-4">
