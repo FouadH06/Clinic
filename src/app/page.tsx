@@ -18,7 +18,7 @@ export default async function DashboardPage() {
     .order('name')
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pt-14">
+    <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">
       <NavBar />
       <ItemGrid initialItems={(items as Item[]) ?? []} />
     </div>

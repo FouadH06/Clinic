@@ -29,45 +29,40 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
+        {/* Brand */}
         <div className="text-center mb-8">
-          <div className="text-6xl mb-3">🦷</div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Teissir</h1>
-          <p className="text-teal-100 mt-1 text-sm">Dental Clinic Inventory</p>
+          <h1 className="text-2xl font-semibold text-white tracking-tight">Teissire Dental Clinic</h1>
+          <p className="text-slate-400 mt-1.5 text-sm">Staff Inventory System</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-6">Sign in to continue</h2>
+        <div className="bg-white rounded-2xl shadow-2xl p-7">
+          <p className="text-base font-semibold text-slate-800 mb-5">Sign in to continue</p>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Email
-              </label>
+              <label className="block text-xs font-medium text-slate-500 mb-1.5">Email address</label>
               <input
                 id="email"
                 type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="doctor@clinic.com"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition text-gray-900 placeholder-gray-400"
+                placeholder="you@clinic.com"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition text-slate-900 placeholder-slate-400 text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Password
-              </label>
+              <label className="block text-xs font-medium text-slate-500 mb-1.5">Password</label>
               <input
                 id="password"
                 type="password"
@@ -75,7 +70,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition text-gray-900 placeholder-gray-400"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition text-slate-900 placeholder-slate-400 text-sm"
               />
             </div>
 
@@ -83,7 +78,7 @@ export default function LoginPage() {
               id="login-submit"
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              className="w-full py-3 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed mt-1"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -93,13 +88,13 @@ export default function LoginPage() {
                   </svg>
                   Signing in…
                 </span>
-              ) : 'Sign In'}
+              ) : 'Sign in'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-teal-200 text-xs mt-6">
-          Contact your administrator to get access
+        <p className="text-center text-slate-600 text-xs mt-6">
+          Contact your administrator for access
         </p>
       </div>
     </div>

@@ -9,36 +9,31 @@ export default function LowStockBanner({ items }: Props) {
   if (lowItems.length === 0) return null
 
   return (
-    <div className="bg-red-50 border-b border-red-200 px-4 py-3 md:px-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-start gap-2">
-          <span className="text-red-500 text-lg flex-shrink-0 mt-0.5">⚠️</span>
-          <div>
-            <p className="text-sm font-semibold text-red-700 mb-1">
-              {lowItems.length} item{lowItems.length !== 1 ? 's' : ''} low on stock — reorder needed
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {lowItems.map(item => (
-                <div key={item.id} className="bg-white border border-red-200 rounded-lg px-3 py-1.5 text-xs">
-                  <span className="font-semibold text-red-700">{item.icon} {item.name}</span>
-                  <span className="text-gray-500 ml-1">({item.quantity} {item.unit} left)</span>
-                  {item.supplier && (
-                    <span className="text-gray-500 ml-1">
-                      · {item.supplier.name}
-                      {item.supplier.phone && (
-                        <a
-                          href={`tel:${item.supplier.phone}`}
-                          className="ml-1 text-teal-600 font-medium hover:underline"
-                        >
-                          {item.supplier.phone}
-                        </a>
-                      )}
-                    </span>
+    <div className="bg-amber-50/50 border-y border-amber-200/50 border-l-4 border-l-amber-500 px-4 py-2.5 md:px-6">
+      <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center gap-3 md:gap-4 text-[13px]">
+        <div className="font-semibold text-amber-900 shrink-0">
+          Reorder required ({lowItems.length})
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {lowItems.map(item => (
+            <div key={item.id} className="flex items-center gap-1.5 text-slate-700">
+              <span className="font-bold text-amber-900">{item.name}</span>
+              <span className="text-slate-500 text-xs font-medium">({item.quantity} left)</span>
+              {item.supplier && (
+                <span className="text-slate-400 text-xs flex items-center gap-1">
+                  &middot; <span className="text-slate-600">{item.supplier.name}</span>
+                  {item.supplier.phone && (
+                    <a
+                      href={`tel:${item.supplier.phone}`}
+                      className="ml-0.5 text-teal-700 font-medium hover:underline flex items-center"
+                    >
+                      {item.supplier.phone}
+                    </a>
                   )}
-                </div>
-              ))}
+                </span>
+              )}
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

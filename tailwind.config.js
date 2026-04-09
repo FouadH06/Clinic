@@ -9,28 +9,29 @@ module.exports = {
     extend: {
       colors: {
         teal: {
-          50:  '#f0faf6',
-          100: '#d4f2e5',
-          200: '#aae4cb',
-          300: '#72cfac',
-          400: '#3db58a',
-          500: '#1D9E75',
-          600: '#157d5c',
-          700: '#10624a',
-          800: '#0d4e3b',
-          900: '#0a3e2f',
+          50: '#f2f7f6',
+          100: '#e0efeb',
+          200: '#c2dfd8',
+          300: '#9ac8be',
+          400: '#6ba89b',
+          500: '#4c8b7e',
+          600: '#3c6e64',
+          700: '#325952',
+          800: '#2b4a45',
+          900: '#263e3a',
+          950: '#132120',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       animation: {
-        'slide-up': 'slideUp 0.25s ease-out',
-        'fade-in': 'fadeIn 0.2s ease-out',
+        'fade-in': 'fadeIn 0.15s ease-out',
+        'slide-up': 'slideUp 0.15s ease-out',
       },
       keyframes: {
         slideUp: {
-          from: { transform: 'translateY(100%)', opacity: '0' },
+          from: { transform: 'translateY(10px)', opacity: '0' },
           to:   { transform: 'translateY(0)',    opacity: '1' },
         },
         fadeIn: {

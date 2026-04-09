@@ -13,16 +13,16 @@ export default async function SuppliersPage() {
 
   const { data: suppliers } = await supabase
     .from('suppliers')
-    .select('*, items(id, name, icon)')
+    .select('*, items(id, name, icon, quantity, min_stock_threshold)')
     .order('name')
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pt-14">
+    <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">
       <NavBar />
-      <div className="max-w-6xl mx-auto px-4 py-6 md:px-6">
+      <div className="max-w-6xl mx-auto px-4 py-8 md:px-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage your supply vendors</p>
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Suppliers</h1>
+          <p className="text-sm text-slate-500 mt-1">Manage your supply vendors</p>
         </div>
         <SupplierList initialSuppliers={(suppliers as any) ?? []} />
       </div>
