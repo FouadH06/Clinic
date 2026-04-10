@@ -797,8 +797,17 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
                   {/* Unit */}
                   <td className="px-3 py-2.5 text-slate-500 text-xs">
                     {isEditing
-                      ? <input value={editValues.unit ?? ''} onChange={e => setEditValues(p => ({ ...p, unit: e.target.value }))}
-                          className="w-16 px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white" />
+                      ? <div className="w-[88px]">
+                          <Dropdown
+                            value={editValues.unit ?? 'units'}
+                            onChange={v => setEditValues(p => ({ ...p, unit: v }))}
+                            options={[
+                              { value: 'units', label: 'Units' },
+                              { value: 'boxes', label: 'Boxes' },
+                            ]}
+                            size="sm"
+                          />
+                        </div>
                       : item.unit
                     }
                   </td>

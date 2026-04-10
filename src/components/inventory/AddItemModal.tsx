@@ -112,10 +112,14 @@ export default function AddItemModal({ suppliers, categories, onClose, onSave }:
               </div>
               <div>
                 <Label>Unit</Label>
-                <Input
-                  value={values.unit ?? ''}
-                  onChange={e => set('unit', e.target.value)}
-                  placeholder="boxes, units…"
+                <Dropdown
+                  value={values.unit ?? 'units'}
+                  onChange={v => set('unit', v)}
+                  options={[
+                    { value: 'units', label: 'Units' },
+                    { value: 'boxes', label: 'Boxes' },
+                  ]}
+                  size="md"
                 />
               </div>
             </div>

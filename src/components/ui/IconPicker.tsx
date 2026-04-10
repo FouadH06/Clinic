@@ -20,10 +20,9 @@ export default function IconPicker({ value, onChange }: Props) {
             key={icon.id}
             type="button"
             onClick={() => onChange(icon.id)}
-            title={icon.label}
             className={`
-              flex flex-col items-center justify-center gap-1
-              h-14 rounded-lg border text-xs font-medium
+              flex items-center justify-center
+              h-10 rounded-lg border
               transition-all duration-100
               ${isActive
                 ? 'bg-teal-50 border-teal-500 text-teal-700 ring-2 ring-teal-400 ring-offset-1'
@@ -33,9 +32,6 @@ export default function IconPicker({ value, onChange }: Props) {
           >
             <span className={isActive ? 'text-teal-600' : 'text-slate-400'}>
               {icon.render('w-5 h-5')}
-            </span>
-            <span className="text-[9px] leading-none truncate px-1 w-full text-center">
-              {icon.label}
             </span>
           </button>
         )
@@ -113,10 +109,9 @@ function IconPopoverMenu({ triggerRef, value, onChange, onClose }: PopoverProps)
               key={icon.id}
               type="button"
               onClick={() => { onChange(icon.id); onClose() }}
-              title={icon.label}
               className={`
-                flex flex-col items-center justify-center gap-0.5
-                h-12 rounded-lg border text-[9px] font-medium
+                flex items-center justify-center
+                h-10 rounded-lg border
                 transition-all duration-75
                 ${isActive
                   ? 'bg-teal-50 border-teal-400 text-teal-700 ring-1 ring-teal-400'
@@ -125,10 +120,7 @@ function IconPopoverMenu({ triggerRef, value, onChange, onClose }: PopoverProps)
               `}
             >
               <span className={isActive ? 'text-teal-600' : ''}>
-                {icon.render('w-4 h-4')}
-              </span>
-              <span className="leading-none truncate px-0.5 w-full text-center">
-                {icon.label}
+                {icon.render('w-5 h-5')}
               </span>
             </button>
           )
