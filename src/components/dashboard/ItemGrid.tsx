@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import ItemCard from './ItemCard'
 import BottomBar from './BottomBar'
 import LowStockSidebar from './LowStockSidebar'
+import { consumeFifoLots } from '@/lib/fifo'
 
 interface Props {
   initialItems: Item[]
@@ -117,6 +118,8 @@ export default function ItemGrid({ initialItems }: Props) {
           const newQty = Math.max(0, item.quantity - quantity_used)
           await supabase.from('items').update({ quantity: newQty }).eq('id', item_id)
           await supabase.from('usage_log').insert({ item_id, quantity_used, note: note || null })
+          // Consume FIFO lots for this deduction
+          await consumeFifoLots(supabase, item_id, quantity_used)
         })
       )
       showToast(`${entries.length} item${entries.length !== 1 ? 's' : ''} deducted`, true)

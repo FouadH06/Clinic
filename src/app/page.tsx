@@ -16,7 +16,7 @@ export default async function DashboardPage() {
 
   const { data: items } = await supabase
     .from('items')
-    .select('*, supplier:suppliers(id, name, phone, email)')
+    .select('id, name, icon, quantity, min_stock_threshold, unit, category')
     .order('name')
 
   return (

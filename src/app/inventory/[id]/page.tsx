@@ -3,6 +3,7 @@ import NavBar from '@/components/NavBar'
 import ItemDetailView from '@/components/inventory/ItemDetailView'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
@@ -11,51 +12,53 @@ interface Props {
   params: Promise<{ id: string }>
 }
 
+/**
+ * Cached item fetcher — React.cache deduplicates within a single request,
+ * so generateMetadata and the page body share the same DB round-trip.
+ */
+const getItem = cache(async (id: string) => {
+  const supabase = await createClient()
+  const { data: fullItem } = await supabase
+    .from('items')
+    .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+    .eq('id', id)
+    .single()
+
+  if (fullItem) return fullItem
+
+  // Fallback: item_suppliers migration may not have run yet
+  const { data: basicItem } = await supabase
+    .from('items')
+    .select('*, supplier:suppliers(id, name, phone, email, notes)')
+    .eq('id', id)
+    .single()
+
+  if (!basicItem) return null
+
+  return {
+    ...basicItem,
+    item_suppliers: basicItem.supplier
+      ? [{ id: 'legacy', item_id: id, supplier_id: basicItem.supplier_id, supplier: basicItem.supplier }]
+      : [],
+  }
+})
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
-  const supabase = await createClient()
-  const { data } = await supabase.from('items').select('name').eq('id', id).single()
+  const item = await getItem(id)
   return {
-    title: data ? `${data.name} – Teissir Dental Inventory` : 'Product Details',
+    title: item ? `${item.name} – Teissir Dental Inventory` : 'Product Details',
     description: 'View product details, supplier assignments, and stock history.',
   }
 }
 
 export default async function ItemDetailPage({ params }: Props) {
   const { id } = await params
-  const supabase = await createClient()
-
-  // Try full join first; fall back to simple query if item_suppliers doesn't exist yet
-  let item: any = null
-  const { data: fullItem, error: fullErr } = await supabase
-    .from('items')
-    .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
-    .eq('id', id)
-    .single()
-
-  if (fullItem) {
-    item = fullItem
-  } else {
-    // Fallback: item_suppliers migration may not have run yet
-    const { data: basicItem } = await supabase
-      .from('items')
-      .select('*, supplier:suppliers(id, name, phone, email, notes)')
-      .eq('id', id)
-      .single()
-    if (basicItem) {
-      // Shim supplier into item_suppliers shape so components work consistently
-      item = {
-        ...basicItem,
-        item_suppliers: basicItem.supplier
-          ? [{ id: 'legacy', item_id: id, supplier_id: basicItem.supplier_id, supplier: basicItem.supplier }]
-          : [],
-      }
-    }
-  }
-
+  const item = await getItem(id) as any
   if (!item) notFound()
 
-  const [{ data: suppliers }, { data: logs }] = await Promise.all([
+  const supabase = await createClient()
+  const [{ data: suppliers }, { data: logs }, { data: lots }] = await Promise.all([
     supabase.from('suppliers').select('*').order('name'),
     // Try with supplier join; silently fall back if supplier_id column missing
     supabase
@@ -68,7 +71,26 @@ export default async function ItemDetailPage({ params }: Props) {
         ? supabase.from('usage_log').select('*').eq('item_id', id).order('used_at', { ascending: false }).limit(200)
         : res
       ),
+    // FIFO lots for this item (graceful fallback if table missing)
+    supabase
+      .from('inventory_lots')
+      .select('quantity_remaining, cost_per_unit')
+      .eq('item_id', id)
+      .gt('quantity_remaining', 0)
+      .then(res => res.error ? { data: [] } : res),
   ])
+
+  // Compute FIFO value and avg cost from active lots
+  let fifoValue: number | null = null
+  let fifoAvgCost: number | null = null
+  if (lots && lots.length > 0) {
+    const pricedLots = lots.filter(l => l.cost_per_unit && Number(l.cost_per_unit) > 0)
+    if (pricedLots.length > 0) {
+      fifoValue = pricedLots.reduce((s, l) => s + Number(l.quantity_remaining) * Number(l.cost_per_unit), 0)
+      const totalQty = item.quantity
+      fifoAvgCost = totalQty > 0 ? fifoValue / totalQty : null
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">
@@ -102,6 +124,8 @@ export default async function ItemDetailPage({ params }: Props) {
           item={item}
           allSuppliers={(suppliers as any) ?? []}
           initialLogs={(logs as any) ?? []}
+          fifoValue={fifoValue}
+          fifoAvgCost={fifoAvgCost}
         />
       </div>
     </div>

@@ -14,50 +14,47 @@ export const dynamic = 'force-dynamic'
 export default async function RestockPage() {
   const supabase = await createClient()
 
-  // Try with item_suppliers join; fall back if migration hasn't run yet
-  let items: any[] = []
-  const { data: fullItems } = await supabase
-    .from('items')
-    .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
-    .order('name')
-
-  if (fullItems) {
-    items = fullItems
-  } else {
-    const { data: basicItems } = await supabase
+  // All queries in parallel — no sequential waterfalls
+  const [itemsResult, { data: suppliers }, restockLogsResult] = await Promise.all([
+    // Items: try full join, fall back if item_suppliers migration hasn't run
+    supabase
       .from('items')
-      .select('*, supplier:suppliers(id, name, phone, email, notes)')
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
       .order('name')
-    items = (basicItems ?? []).map((i: any) => ({
-      ...i,
-      item_suppliers: i.supplier
-        ? [{ id: 'legacy', item_id: i.id, supplier_id: i.supplier_id, supplier: i.supplier }]
-        : [],
-    }))
-  }
-
-  const { data: suppliers } = await supabase.from('suppliers').select('*').order('name')
-
-  // Try with supplier join on usage_log; fall back if supplier_id column missing
-  let restockLogs: any[] = []
-  const { data: fullLogs, error: logsErr } = await supabase
-    .from('usage_log')
-    .select('*, item:items(id, name, icon, unit), supplier:suppliers(id, name)')
-    .eq('type', 'restock')
-    .order('used_at', { ascending: false })
-    .limit(200)
-
-  if (!logsErr) {
-    restockLogs = fullLogs ?? []
-  } else {
-    // Fallback: no supplier join, or type column doesn't exist
-    const { data: basicLogs } = await supabase
+      .then(res => {
+        if (res.data) return res.data
+        return supabase
+          .from('items')
+          .select('*, supplier:suppliers(id, name, phone, email, notes)')
+          .order('name')
+          .then(fallback => (fallback.data ?? []).map((i: any) => ({
+            ...i,
+            item_suppliers: i.supplier
+              ? [{ id: 'legacy', item_id: i.id, supplier_id: i.supplier_id, supplier: i.supplier }]
+              : [],
+          })))
+      }),
+    supabase.from('suppliers').select('*').order('name'),
+    // Restock logs: try with supplier join, fall back if supplier_id column missing
+    supabase
       .from('usage_log')
-      .select('*, item:items(id, name, icon, unit)')
+      .select('*, item:items(id, name, icon, unit), supplier:suppliers(id, name)')
+      .eq('type', 'restock')
       .order('used_at', { ascending: false })
       .limit(200)
-    restockLogs = basicLogs ?? []
-  }
+      .then(res => {
+        if (!res.error) return res.data ?? []
+        return supabase
+          .from('usage_log')
+          .select('*, item:items(id, name, icon, unit)')
+          .order('used_at', { ascending: false })
+          .limit(200)
+          .then(fallback => fallback.data ?? [])
+      }),
+  ])
+
+  const items = itemsResult as any[]
+  const restockLogs = restockLogsResult as any[]
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">

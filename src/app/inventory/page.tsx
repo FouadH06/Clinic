@@ -14,56 +14,53 @@ export const dynamic = 'force-dynamic'
 export default async function InventoryPage() {
   const supabase = await createClient()
 
-  // Try full join first; fall back if item_suppliers migration hasn't run yet
-  let items: any[] = []
-  const { data: fullItems } = await supabase
-    .from('items')
-    .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
-    .order('name')
-
-  if (fullItems) {
-    items = fullItems
-  } else {
-    const { data: basicItems } = await supabase
-      .from('items')
-      .select('*, supplier:suppliers(id, name, phone, email, notes)')
-      .order('name')
-    items = (basicItems ?? []).map((i: any) => ({
-      ...i,
-      item_suppliers: i.supplier
-        ? [{ id: 'legacy', item_id: i.id, supplier_id: i.supplier_id, supplier: i.supplier }]
-        : [],
-    }))
-  }
-
-  const [suppliersRes, categoriesRes, costLogsRes] = await Promise.all([
-    supabase.from('suppliers').select('*').order('name'),
-    // Managed categories table — falls back to empty array if migration not yet run
-    supabase.from('categories').select('id, name').order('name'),
+  // All queries in parallel — no sequential waterfalls
+  const [itemsResult, suppliersRes, categoriesRes, lotsRes] = await Promise.all([
+    // Items: try full join, fall back if item_suppliers migration hasn't run
     supabase
-      .from('usage_log')
-      .select('item_id, cost_per_unit')
-      .eq('type', 'restock')
+      .from('items')
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+      .order('name')
+      .then(res => {
+        if (res.data) return res.data
+        // Fallback: shim legacy supplier into item_suppliers shape
+        return supabase
+          .from('items')
+          .select('*, supplier:suppliers(id, name, phone, email, notes)')
+          .order('name')
+          .then(fallback => (fallback.data ?? []).map((i: any) => ({
+            ...i,
+            item_suppliers: i.supplier
+              ? [{ id: 'legacy', item_id: i.id, supplier_id: i.supplier_id, supplier: i.supplier }]
+              : [],
+          })))
+      }),
+    supabase.from('suppliers').select('*').order('name'),
+    supabase.from('categories').select('id, name').order('name'),
+    // FIFO: fetch remaining lot value per item
+    // quantity_remaining * cost_per_unit, grouped by item_id
+    // Falls back gracefully if inventory_lots table doesn't exist yet.
+    supabase
+      .from('inventory_lots')
+      .select('item_id, quantity_remaining, cost_per_unit')
+      .gt('quantity_remaining', 0)
       .not('cost_per_unit', 'is', null)
-      .order('used_at', { ascending: false })
-      .limit(1000),
+      .gt('cost_per_unit', 0)
+      .then(res => res.error ? { data: [] } : res),
   ])
 
-  // Build map: item_id → latest cost per unit (logs are desc, first match = latest)
-  const latestCostMap: Record<string, number> = {}
-  for (const log of costLogsRes.data ?? []) {
-    if (!latestCostMap[log.item_id] && log.cost_per_unit) {
-      latestCostMap[log.item_id] = Number(log.cost_per_unit)
-    }
+  const items = itemsResult as any[]
+
+  // Build FIFO value map: item_id → sum(quantity_remaining * cost_per_unit)
+  const fifoValueMap: Record<string, number> = {}
+  for (const lot of (lotsRes as any).data ?? []) {
+    const lotValue = Number(lot.quantity_remaining) * Number(lot.cost_per_unit)
+    fifoValueMap[lot.item_id] = (fifoValueMap[lot.item_id] ?? 0) + lotValue
   }
 
-  // Total inventory value = sum(qty × latest cost) for priced items only
-  const totalValue = (items ?? []).reduce((sum, item) => {
-    const cost = latestCostMap[item.id] ?? 0
-    return sum + item.quantity * cost
-  }, 0)
-
-  const itemsWithCost = (items ?? []).filter(i => latestCostMap[i.id])
+  // Total inventory value = sum of FIFO values across all items
+  const totalValue = Object.values(fifoValueMap).reduce((s, v) => s + v, 0)
+  const itemsWithCost = (items ?? []).filter(i => fifoValueMap[i.id])
 
   // If categories table doesn't exist yet, fall back to deriving from items
   const categories = categoriesRes.data ?? []
@@ -88,7 +85,8 @@ export default async function InventoryPage() {
                 ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                Based on latest recorded unit costs ·{' '}
+                FIFO costing
+                {' · '}
                 <span className="text-slate-500 font-medium">{itemsWithCost.length}/{items?.length ?? 0}</span> items priced
               </p>
             </div>
@@ -105,7 +103,7 @@ export default async function InventoryPage() {
             initialItems={(items as any) ?? []}
             suppliers={suppliersRes.data ?? []}
             initialCategories={categories as any}
-            latestCostMap={latestCostMap}
+            fifoValueMap={fifoValueMap}
           />
         </Suspense>
       </div>

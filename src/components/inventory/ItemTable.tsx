@@ -4,17 +4,20 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Item, Supplier, Category, ItemSupplierJoin } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
+import { consumeFifoLots } from '@/lib/fifo'
 import AddItemModal from './AddItemModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import Dropdown from '@/components/ui/Dropdown'
 import IconPicker, { IconPopoverTrigger } from '@/components/ui/IconPicker'
+import SupplierMultiSelect from '@/components/ui/SupplierMultiSelect'
 import { createPortal } from 'react-dom'
 
 interface Props {
   initialItems:   Item[]
   suppliers:      Supplier[]
   initialCategories: Category[]
-  latestCostMap?: Record<string, number>
+  latestCostMap?: Record<string, number>   // kept for type compat — unused
+  fifoValueMap?:  Record<string, number>   // FIFO item value (sum of lot.qty_remaining × lot.cost)
 }
 
 // ─── Bulk delete confirmation dialog ──────────────────────────────────────────
@@ -206,141 +209,9 @@ function BulkBar({
   )
 }
 
+
 // ─── Supplier multi-select (inline edit row) ────────────────────────────────
-// Portal-based checklist trigger — does not close on each pick.
-function SupplierMultiSelect({
-  suppliers,
-  selectedIds,
-  onChange,
-}: {
-  suppliers:   Supplier[]
-  selectedIds: Set<string>
-  onChange:    (updated: Set<string>) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const btnRef  = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      const t = e.target as Node
-      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return
-      setOpen(false)
-    }
-    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    document.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handle)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [open])
-
-  // Portal coords
-  const [coords, setCoords] = useState<{ top: number; left: number; minWidth: number } | null>(null)
-  useEffect(() => {
-    if (!open) return
-    function compute() {
-      const rect = btnRef.current?.getBoundingClientRect()
-      if (!rect) return
-      setCoords({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX, minWidth: Math.max(rect.width, 180) })
-    }
-    compute()
-    window.addEventListener('scroll', compute, true)
-    window.addEventListener('resize', compute)
-    return () => {
-      window.removeEventListener('scroll', compute, true)
-      window.removeEventListener('resize', compute)
-    }
-  }, [open])
-
-  function toggle(id: string) {
-    const next = new Set(selectedIds)
-    next.has(id) ? next.delete(id) : next.add(id)
-    onChange(next)
-  }
-
-  // Build summary label
-  const count = selectedIds.size
-  const label = count === 0
-    ? 'No supplier'
-    : count === 1
-      ? (suppliers.find(s => selectedIds.has(s.id))?.name ?? '1 supplier')
-      : `${count} suppliers`
-
-  return (
-    <div className="relative inline-block">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`
-          inline-flex items-center justify-between gap-2 h-7 pl-2.5 pr-2 text-xs font-medium
-          bg-white border rounded-lg cursor-pointer transition-colors min-w-[140px]
-          focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent
-          ${open ? 'border-teal-500 ring-2 ring-teal-500 text-slate-800' : 'border-teal-400 text-slate-700 hover:border-teal-500'}
-        `}
-      >
-        <span className={`truncate ${count === 0 ? 'text-slate-400' : ''}`}>{label}</span>
-        <svg className={`w-3 h-3 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {open && coords && createPortal(
-        <div
-          ref={menuRef}
-          style={{ position: 'absolute', top: coords.top, left: coords.left, minWidth: coords.minWidth, maxWidth: 260, zIndex: 9999 }}
-          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-fade-in max-h-52 overflow-y-auto"
-        >
-          {/* Clear all option */}
-          <button
-            type="button"
-            onClick={() => onChange(new Set())}
-            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
-              count === 0
-                ? 'bg-teal-50 text-teal-800 font-semibold'
-                : 'text-slate-400 hover:bg-teal-50/60 hover:text-teal-700'
-            }`}
-          >
-            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${count === 0 ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
-              {count === 0 && <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </span>
-            No supplier
-          </button>
-
-          {suppliers.length > 0 && <div className="border-t border-slate-100 my-1" />}
-
-          {suppliers.map(s => {
-            const checked = selectedIds.has(s.id)
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => toggle(s.id)}
-                className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
-                  checked ? 'bg-teal-50 text-teal-800 font-semibold' : 'text-slate-700 hover:bg-teal-50/70 hover:text-teal-800'
-                }`}
-              >
-                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
-                  {checked && <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </span>
-                {s.name}
-              </button>
-            )
-          })}
-
-          {suppliers.length === 0 && (
-            <p className="px-3 py-2 text-xs text-slate-400 italic">No suppliers configured</p>
-          )}
-        </div>,
-        document.body
-      )}
-    </div>
-  )
-}
+// Shared component — see src/components/ui/SupplierMultiSelect.tsx
 
 // ─── Quick +Stock cell ───────────────────────────────────────────────────────────────────
 function QuickStockCell({ item, onAdd }: { item: Item; onAdd: (id: string, delta: number) => Promise<void> }) {
@@ -405,7 +276,7 @@ function QuickStockCell({ item, onAdd }: { item: Item; onAdd: (id: string, delta
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
-export default function ItemTable({ initialItems, suppliers, initialCategories, latestCostMap = {} }: Props) {
+export default function ItemTable({ initialItems, suppliers, initialCategories, latestCostMap = {}, fifoValueMap = {} }: Props) {
   const [items,      setItems]      = useState<Item[]>(initialItems)
   const [categories, setCategories] = useState<Category[]>(initialCategories)
   const [editingId,  setEditingId]  = useState<string | null>(null)
@@ -522,6 +393,15 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
       .single()
 
     if (!error && data) {
+      // If quantity was reduced, consume FIFO lots for the difference
+      const oldQty = items.find(i => i.id === id)?.quantity ?? 0
+      const newQty = Number(editValues.quantity)
+      if (newQty < oldQty) {
+        const deducted = oldQty - newQty
+        console.log(`[FIFO] Inline edit reduced qty by ${deducted} on item ${id}`)
+        await consumeFifoLots(supabase, id, deducted)
+      }
+
       // 2. Diff supplier changes against the junction table
       const existing = ((data as any).item_suppliers ?? []) as ItemSupplierJoin[]
       const existingIds = new Set(existing.map((is: ItemSupplierJoin) => is.supplier_id))
@@ -595,6 +475,14 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
         .from('items').update({ quantity: newQty }).eq('id', id)
         .select('*, supplier:suppliers(id, name, phone, email)').single()
       if (data) setItems(prev => prev.map(i => i.id === id ? data as Item : i))
+      // If this was a deduction, consume FIFO lots
+      if (delta < 0) {
+        const actualDeducted = item.quantity - newQty  // how much was actually removed
+        if (actualDeducted > 0) {
+          console.log(`[FIFO] Bulk adjust deducted ${actualDeducted} from item ${id}`)
+          await consumeFifoLots(supabase, id, actualDeducted)
+        }
+      }
     }))
     setOperatingBulk(false)
   }
@@ -677,17 +565,34 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
     e.target.value = ''
   }
 
-  async function handleAdd(values: Partial<Item>) {
+  async function handleAdd(values: Partial<Item>, supplierIds: Set<string>) {
     const { data, error } = await supabase
       .from('items').insert({
         name: values.name, icon: values.icon ?? '📦',
-        quantity: Number(values.quantity ?? 0),
+        quantity: 0,
         min_stock_threshold: Number(values.min_stock_threshold ?? 5),
         unit: values.unit ?? 'units',
-        category: values.category || null, supplier_id: values.supplier_id || null,
+        category: values.category || null,
       })
-      .select('*, supplier:suppliers(id, name, phone, email)').single()
-    if (!error && data) { setItems(prev => [...prev, data as Item]); setShowModal(false) }
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+      .single()
+    if (!error && data) {
+      // Write junction records for each selected supplier
+      if (supplierIds.size > 0) {
+        await supabase.from('item_suppliers').insert(
+          [...supplierIds].map(sid => ({ item_id: (data as any).id, supplier_id: sid }))
+        )
+        // Re-fetch with fresh junction data
+        const { data: fresh } = await supabase
+          .from('items')
+          .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+          .eq('id', (data as any).id)
+          .single()
+        if (fresh) { setItems(prev => [...prev, fresh as Item]); setShowModal(false); return }
+      }
+      setItems(prev => [...prev, data as Item])
+      setShowModal(false)
+    }
   }
 
   // Checkbox states
@@ -866,27 +771,19 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
                   {/* Category */}
                   <td className="px-3 py-2.5 text-slate-500 text-xs">
                     {isEditing
-                      ? effectiveCategories.length > 0
-                        ? <div className="relative">
-                            <select
-                              value={editValues.category ?? ''}
-                              onChange={e => setEditValues(p => ({ ...p, category: e.target.value }))}
-                              className="w-full min-w-[110px] appearance-none pl-2 pr-7 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white cursor-pointer"
-                            >
-                              <option value="">No category</option>
-                              {effectiveCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                            </select>
-                            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </div>
-                        : <input value={editValues.category ?? ''} onChange={e => setEditValues(p => ({ ...p, category: e.target.value }))}
-                            className="w-full min-w-[90px] px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white" placeholder="e.g. PPE" />
+                      ? <Dropdown
+                          value={editValues.category ?? ''}
+                          onChange={v => setEditValues(p => ({ ...p, category: v }))}
+                          options={effectiveCategories.map(c => ({ value: c.name, label: c.name }))}
+                          placeholder="No category"
+                          size="sm"
+                        />
                       : item.category
                         ? <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium">{item.category}</span>
                         : <span className="text-slate-300">—</span>
                     }
                   </td>
+
 
                   {/* Qty */}
                   <td className="px-3 py-2.5">
@@ -933,17 +830,19 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
                     }
                   </td>
 
-                  {/* Value (qty × latest cost) */}
+                  {/* Value — FIFO lot-based: sum(qty_remaining × cost) for all active lots */}
                   <td className="px-3 py-2.5 text-slate-600 text-xs tabular-nums hidden lg:table-cell">
                     {(() => {
-                      const cost = latestCostMap[item.id]
-                      if (!cost) return (
+                      const val = fifoValueMap[item.id]
+                      if (val === undefined || val === null) return (
                         <span
                           className="text-slate-300 cursor-help"
-                          title="No restock cost recorded yet"
+                          title="No FIFO lot data yet — run migration 005 in Supabase"
                         >—</span>
                       )
-                      const val = item.quantity * cost
+                      if (val === 0) return (
+                        <span className="text-slate-300 cursor-help" title="All lots have zero cost">—</span>
+                      )
                       return (
                         <span className="font-medium">
                           ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

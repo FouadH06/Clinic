@@ -10,6 +10,10 @@ interface Props {
   item: Item
   allSuppliers: Supplier[]
   initialLogs: UsageLog[]
+  /** Pre-computed from inventory_lots on the server. null = no FIFO data yet. */
+  fifoValue: number | null
+  /** fifoValue ÷ current qty. null when no priced lots or qty = 0. */
+  fifoAvgCost: number | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,7 +289,12 @@ function ProductInfoTab({ item, allSuppliers, itemSuppliers, onSuppliersUpdate }
 }
 
 // ─── Restock & Usage Tab ──────────────────────────────────────────────────────
-function RestockUsageTab({ item, logs }: { item: Item; logs: UsageLog[] }) {
+function RestockUsageTab({ item, logs, fifoValue, fifoAvgCost }: {
+  item: Item
+  logs: UsageLog[]
+  fifoValue: number | null
+  fifoAvgCost: number | null
+}) {
   const restockLogs = logs.filter(l => l.type === 'restock')
   const allLogs = logs
 
@@ -324,22 +333,27 @@ function RestockUsageTab({ item, logs }: { item: Item; logs: UsageLog[] }) {
             sub={lastRestock ? `on ${fmtDate(lastRestock.used_at)}` : undefined}
           />
           <StatCard
-            label="Avg Cost/Unit"
-            value={avgCost !== null ? fmtMoney(avgCost) : '—'}
+            label="FIFO Avg Cost/Unit"
+            value={fifoAvgCost !== null ? fmtMoney(fifoAvgCost) : '—'}
             sub={
-              avgCost !== null
-                ? `Weighted avg · ${costsWithValue.length} order${costsWithValue.length !== 1 ? 's' : ''}, ${totalPricedQty} ${item.unit}`
-                : 'No priced restocks yet'
+              fifoAvgCost !== null
+                ? 'Based on remaining FIFO lots'
+                : fifoValue === null ? 'No lot data — run migration 005' : 'All lots have zero cost'
             }
           />
           <StatCard
-            label="Total Restocked"
-            value={<span className="text-teal-700">{totalUnitsRestocked} {item.unit}</span>}
-            sub={`${restockLogs.length} restock${restockLogs.length !== 1 ? 's' : ''}`}
+            label="FIFO Inventory Value"
+            value={
+              fifoValue !== null && fifoValue > 0
+                ? <span className="text-teal-700">{fmtMoney(fifoValue)}</span>
+                : <span className="text-slate-400">—</span>
+            }
+            sub={fifoValue !== null ? 'Live lot value (qty × cost)' : 'No lot data yet'}
           />
           <StatCard
             label="Total Spend"
             value={totalSpend > 0 ? fmtMoney(totalSpend) : '—'}
+            sub="Historical cash outflow"
           />
         </div>
       </div>
@@ -453,7 +467,7 @@ function RestockUsageTab({ item, logs }: { item: Item; logs: UsageLog[] }) {
 }
 
 // ─── Root component ───────────────────────────────────────────────────────────
-export default function ItemDetailView({ item, allSuppliers, initialLogs }: Props) {
+export default function ItemDetailView({ item, allSuppliers, initialLogs, fifoValue, fifoAvgCost }: Props) {
   const [activeTab, setActiveTab] = useState<'info' | 'history'>('info')
   const [itemSuppliers, setItemSuppliers] = useState<ItemSupplierJoin[]>(
     (item.item_suppliers as ItemSupplierJoin[]) ?? []
@@ -508,7 +522,12 @@ export default function ItemDetailView({ item, allSuppliers, initialLogs }: Prop
           />
         )}
         {activeTab === 'history' && (
-          <RestockUsageTab item={item} logs={initialLogs} />
+          <RestockUsageTab
+            item={item}
+            logs={initialLogs}
+            fifoValue={fifoValue}
+            fifoAvgCost={fifoAvgCost}
+          />
         )}
       </div>
     </div>

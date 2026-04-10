@@ -13,13 +13,33 @@ export const dynamic = 'force-dynamic'
 export default async function SuppliersPage() {
   const supabase = await createClient()
 
-  const [{ data: suppliers }, { data: items }] = await Promise.all([
+  const [{ data: suppliers }, { data: items }, { data: restockLogs }] = await Promise.all([
     supabase
       .from('suppliers')
-      .select('*, item_suppliers(item_id, item:items(id, name, icon, quantity, min_stock_threshold, unit))')
+      .select('*, item_suppliers(item_id, item:items(id, name, icon, quantity, min_stock_threshold, unit, category))')
       .order('name'),
     supabase.from('items').select('id, name, icon, unit, category').order('name'),
+    // Last restock + spend per supplier
+    supabase
+      .from('usage_log')
+      .select('supplier_id, used_at, cost_per_unit, quantity_used')
+      .eq('type', 'restock')
+      .not('supplier_id', 'is', null)
+      .order('used_at', { ascending: false })
+      .limit(2000),
   ])
+
+  // Aggregate per-supplier stats from restock logs
+  const supplierStats: Record<string, { lastRestock: string; totalSpend: number }> = {}
+  for (const log of restockLogs ?? []) {
+    const sid = log.supplier_id as string
+    if (!supplierStats[sid]) {
+      supplierStats[sid] = { lastRestock: log.used_at, totalSpend: 0 }
+    }
+    // used_at is already desc so first seen = latest
+    const spend = (log.cost_per_unit ?? 0) * (log.quantity_used ?? 0)
+    supplierStats[sid].totalSpend += spend
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">
@@ -32,6 +52,7 @@ export default async function SuppliersPage() {
         <SupplierList
           initialSuppliers={(suppliers as any) ?? []}
           allItems={(items as any) ?? []}
+          supplierStats={supplierStats}
         />
       </div>
     </div>

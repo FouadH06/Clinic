@@ -29,18 +29,22 @@ interface MenuProps {
 
 function DropdownMenu({ buttonRef, menuRef, children }: MenuProps) {
   const [coords, setCoords] = useState<{
-    top: number; left: number; minWidth: number
+    top: number; bottom: number; left: number; minWidth: number; openUp: boolean
   } | null>(null)
 
   useEffect(() => {
     function compute() {
       const rect = buttonRef.current?.getBoundingClientRect()
       if (!rect) return
+      const menuHeight = 260 // max-h estimate
+      const spaceBelow = window.innerHeight - rect.bottom
+      const openUp = spaceBelow < menuHeight && rect.top > menuHeight
       setCoords({
-        top:      rect.bottom + window.scrollY + 4,
-        left:     rect.left   + window.scrollX,
-        // Use the button's own width as minimum — capped at 280px max
-        minWidth: Math.min(rect.width, 280),
+        top:      rect.bottom + 4,
+        bottom:   window.innerHeight - rect.top + 4,
+        left:     rect.left,
+        minWidth: Math.min(Math.max(rect.width, 130), 280),
+        openUp,
       })
     }
     compute()
@@ -58,11 +62,12 @@ function DropdownMenu({ buttonRef, menuRef, children }: MenuProps) {
     <div
       ref={menuRef as React.RefObject<HTMLDivElement>}
       style={{
-        position: 'absolute',
-        top:      coords.top,
+        position: 'fixed',
+        top:      coords.openUp ? 'auto' : coords.top,
+        bottom:   coords.openUp ? coords.bottom : 'auto',
         left:     coords.left,
         minWidth: coords.minWidth,
-        maxWidth: 280,          // hard cap — never spans the page
+        maxWidth: 280,
         zIndex:   9999,
       }}
       className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-fade-in max-h-60 overflow-y-auto"

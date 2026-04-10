@@ -24,12 +24,9 @@ interface RowState {
 function initRows(items: Item[]): Record<string, RowState> {
   const result: Record<string, RowState> = {}
   for (const item of items) {
-    const qty = item.quantity < item.min_stock_threshold
-      ? Math.max(0, item.min_stock_threshold - item.quantity)
-      : 0
-    // Pre-select first assigned supplier if any
+    // Always start at zero — user enters the quantity they want to restock
     const firstSupplier = (item.item_suppliers as ItemSupplierJoin[])?.[0]?.supplier_id ?? ''
-    result[item.id] = { qty, cost: 0, total: 0, lastEdited: null, supplierId: firstSupplier }
+    result[item.id] = { qty: 0, cost: 0, total: 0, lastEdited: null, supplierId: firstSupplier }
   }
   return result
 }
@@ -316,7 +313,18 @@ function CurrentRestockTab({ items: initialItems, suppliers, onConfirmSuccess }:
           })
           .select('*, item:items(id, name, icon, unit), supplier:suppliers(id, name)')
           .single()
-        if (logEntry) newLogs.push(logEntry as UsageLog)
+        if (logEntry) {
+          newLogs.push(logEntry as UsageLog)
+          // Create FIFO inventory lot for this restock
+          await supabase.from('inventory_lots').insert({
+            item_id:            item.id,
+            restock_log_id:     (logEntry as any).id,
+            quantity_original:  qty,
+            quantity_remaining: qty,
+            cost_per_unit:      storedCost ?? null,
+            created_at:         now,
+          })
+        }
       }))
 
       setRows(prev => {
@@ -474,36 +482,60 @@ function CurrentRestockTab({ items: initialItems, suppliers, onConfirmSuccess }:
         </table>
       </div>
 
-      {/* Sticky confirm bar */}
-      <div className="fixed bottom-[60px] md:bottom-0 left-0 right-0 z-40 pointer-events-none">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 pb-3 md:pb-4 pointer-events-auto">
-          <div className={`flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 rounded-xl shadow-lg border transition-all duration-200 ${summary.itemCount > 0 ? 'bg-white border-teal-200 shadow-[0_4px_24px_0_rgba(45,106,95,0.12)]' : 'bg-white/90 border-slate-200 backdrop-blur-sm'}`}>
-            <div className="flex items-center gap-4">
-              {[['Items', summary.itemCount, summary.itemCount > 0 ? 'text-teal-700' : 'text-slate-400'],
-                ['Units', summary.totalUnits, summary.totalUnits > 0 ? 'text-emerald-700' : 'text-slate-400'],
-                ['Grand Total', `$${summary.grandTotal.toFixed(2)}`, summary.grandTotal > 0 ? 'text-slate-900' : 'text-slate-400']
-              ].map(([label, val, cls], i) => (
-                <div key={i} className="flex items-center gap-4">
-                  {i > 0 && <div className="w-px h-7 bg-slate-200" />}
-                  <div className="text-center">
-                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</div>
-                    <div className={`text-base font-bold tabular-nums leading-tight ${cls}`}>{val}</div>
+      {/* Sticky confirm bar — matches dashboard BottomBar style */}
+      {summary.itemCount > 0 && (
+        <div className="fixed bottom-[60px] md:bottom-0 left-0 right-0 z-40 animate-slide-up pointer-events-auto">
+          {/* Top accent line — full width */}
+          <div className="h-[3px] bg-teal-600" />
+          {/* Dark bar — full width background, content constrained inside */}
+          <div className="bg-teal-800 shadow-2xl px-4 py-4 md:px-6">
+            <div className="flex items-center gap-x-5 gap-y-2 max-w-6xl mx-auto">
+              {/* Stats */}
+              <div className="flex items-center gap-4">
+                {[
+                  ['Items',       summary.itemCount,                    'text-white'],
+                  ['Units',       summary.totalUnits,                   'text-teal-200'],
+                  ['Grand Total', `$${summary.grandTotal.toFixed(2)}`,  'text-white'],
+                ].map(([label, val, cls], i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    {i > 0 && <div className="w-px h-7 bg-white/20" />}
+                    <div className="text-center">
+                      <div className="text-[10px] font-semibold text-teal-300 uppercase tracking-wider">{label}</div>
+                      <div className={`text-base font-bold tabular-nums leading-tight ${cls}`}>{val}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="ml-auto">
-              <button id="confirm-restock-btn" onClick={handleConfirm} disabled={confirming || summary.itemCount === 0}
-                className={`inline-flex items-center gap-2 h-9 px-5 text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 active:scale-[0.98] ${summary.itemCount > 0 ? 'bg-teal-700 hover:bg-teal-800 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'} disabled:opacity-60`}>
-                {confirming
-                  ? <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Restocking…</>
-                  : <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Confirm Restock</>
-                }
-              </button>
+                ))}
+              </div>
+
+              <div className="ml-auto">
+                <button
+                  id="confirm-restock-btn"
+                  onClick={handleConfirm}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 h-10 px-6 bg-white hover:bg-teal-50 active:bg-slate-100 text-teal-800 font-bold text-sm rounded-lg transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {confirming ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin text-teal-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      Restocking…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Confirm Restock
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </div>

@@ -330,13 +330,13 @@ export default function AuditLogTable({ logs, suppliers, items, categories: mana
 
   const hasFilters = !!(
     search || filterItem || filterType || filterSupplier ||
-    filterCategory || filterDir || filterLowStock ||
+    filterCategory || filterLowStock ||
     preset || filterFrom || filterTo
   )
 
   const clearFilters = useCallback(() => {
     setSearch(''); setFilterItem(''); setFilterType(''); setFilterSupplier('')
-    setFilterCategory(''); setFilterDir(''); setFilterLowStock(false)
+    setFilterCategory(''); setFilterLowStock(false)
     setPreset(''); setFilterFrom(''); setFilterTo('')
   }, [])
 
@@ -475,34 +475,6 @@ export default function AuditLogTable({ logs, suppliers, items, categories: mana
             ))}
           </div>
 
-          {/* Divider: Type → Direction */}
-          <div className="w-px h-4 bg-slate-200 hidden sm:block" />
-
-          {/* Direction toggle — ↑ In and ↓ Out are independent toggles; both off = show all */}
-          <div className="flex items-center gap-1">
-            <button
-              id="history-dir-in"
-              onClick={() => setFilterDir(prev => prev === 'in' ? '' : 'in')}
-              className={`h-7 px-2.5 text-xs font-medium rounded-md border transition-all ${
-                filterDir === 'in'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-              }`}
-            >
-              ↑ In
-            </button>
-            <button
-              id="history-dir-out"
-              onClick={() => setFilterDir(prev => prev === 'out' ? '' : 'out')}
-              className={`h-7 px-2.5 text-xs font-medium rounded-md border transition-all ${
-                filterDir === 'out'
-                  ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-              }`}
-            >
-              ↓ Out
-            </button>
-          </div>
 
           {/* Divider: Direction → Low stock */}
           <div className="w-px h-4 bg-slate-200 hidden sm:block" />
