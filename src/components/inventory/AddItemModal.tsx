@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Item, Supplier } from '@/lib/types'
+import { Item, Supplier, Category } from '@/lib/types'
 import IconPicker from '@/components/ui/IconPicker'
 
 interface Props {
-  suppliers: Supplier[]
+  suppliers:  Supplier[]
+  categories: Category[]
   onClose: () => void
   onSave: (values: Partial<Item>) => void
 }
@@ -23,7 +24,7 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   )
 }
 
-export default function AddItemModal({ suppliers, onClose, onSave }: Props) {
+export default function AddItemModal({ suppliers, categories, onClose, onSave }: Props) {
   const [values, setValues] = useState<Partial<Item>>({
     icon: 'box',
     name: '',
@@ -124,11 +125,29 @@ export default function AddItemModal({ suppliers, onClose, onSave }: Props) {
               </div>
               <div>
                 <Label>Category</Label>
-                <Input
-                  value={values.category ?? ''}
-                  onChange={e => set('category', e.target.value)}
-                  placeholder="PPE, Tools…"
-                />
+                {categories.length > 0 ? (
+                  <div className="relative">
+                    <select
+                      value={values.category ?? ''}
+                      onChange={e => set('category', e.target.value)}
+                      className="w-full appearance-none px-3 py-2.5 pr-8 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-slate-900 hover:border-slate-300 transition-colors cursor-pointer"
+                    >
+                      <option value="">No category</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                ) : (
+                  <Input
+                    value={values.category ?? ''}
+                    onChange={e => set('category', e.target.value)}
+                    placeholder="PPE, Tools…"
+                  />
+                )}
               </div>
             </div>
 

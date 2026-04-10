@@ -1,188 +1,59 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Item, Supplier } from '@/lib/types'
+import { Item, Supplier, Category, ItemSupplierJoin } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import AddItemModal from './AddItemModal'
+import ManageCategoriesModal from './ManageCategoriesModal'
 import Dropdown from '@/components/ui/Dropdown'
-import IconPicker from '@/components/ui/IconPicker'
+import IconPicker, { IconPopoverTrigger } from '@/components/ui/IconPicker'
+import { createPortal } from 'react-dom'
 
 interface Props {
-  initialItems: Item[]
-  suppliers: Supplier[]
+  initialItems:   Item[]
+  suppliers:      Supplier[]
+  initialCategories: Category[]
+  latestCostMap?: Record<string, number>
 }
 
-// ─── Bulk Action Bar ────────────────────────────────────────────────────────
-interface BulkBarProps {
+// ─── Bulk delete confirmation dialog ──────────────────────────────────────────
+function BulkDeleteDialog({
+  count,
+  onConfirm,
+  onCancel,
+}: {
   count: number
-  suppliers: Supplier[]
-  categories: string[]
-  onQtyAdjust: (delta: number) => void
-  onAssignSupplier: (id: string) => void
-  onAssignCategory: (cat: string) => void
-  onDelete: () => void
-  onClear: () => void
-  operating: boolean
-}
-
-function BulkBar({
-  count, suppliers, categories,
-  onQtyAdjust, onAssignSupplier, onAssignCategory,
-  onDelete, onClear, operating,
-}: BulkBarProps) {
-  const [qtyInput, setQtyInput] = useState<string>('1')
-  const [supplierInput, setSupplierInput] = useState('')
-  const [categoryInput, setCategoryInput] = useState('')
-  const [newCategoryInput, setNewCategoryInput] = useState('')
-  const [showCatInput, setShowCatInput] = useState(false)
-  const qty = Math.max(1, parseInt(qtyInput) || 1)
-
+  onConfirm: () => void
+  onCancel: () => void
+}) {
   return (
-    <div className="bg-teal-900 text-white rounded-xl px-4 py-3 mb-4 animate-fade-in shadow-lg">
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Selection count */}
-        <span className="text-sm font-semibold text-teal-100 shrink-0">
-          {count} item{count !== 1 ? 's' : ''} selected
-        </span>
-
-        <div className="w-px h-5 bg-teal-700 shrink-0 hidden sm:block" />
-
-        {/* Qty delta input + Add/Subtract */}
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            value={qtyInput}
-            onChange={e => setQtyInput(e.target.value)}
-            min={1}
-            className="w-14 h-7 px-2 text-xs font-semibold text-center border border-teal-700 bg-teal-800 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 placeholder-teal-500"
-            placeholder="qty"
-          />
-          <button
-            onClick={() => onQtyAdjust(+qty)}
-            disabled={operating}
-            className="h-7 px-2.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-md transition-colors disabled:opacity-50"
-          >
-            + Add stock
-          </button>
-          <button
-            onClick={() => onQtyAdjust(-qty)}
-            disabled={operating}
-            className="h-7 px-2.5 text-xs font-semibold bg-teal-700 hover:bg-teal-600 text-white rounded-md transition-colors disabled:opacity-50"
-          >
-            − Subtract
-          </button>
-        </div>
-
-        <div className="w-px h-5 bg-teal-700 shrink-0 hidden sm:block" />
-
-        {/* Assign supplier */}
-        <div className="flex items-center gap-1.5">
-          <div className="relative">
-            <select
-              value={supplierInput}
-              onChange={e => setSupplierInput(e.target.value)}
-              className="h-7 pl-2 pr-6 text-xs bg-teal-800 border border-teal-700 text-teal-100 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer min-w-[110px]"
-            >
-              <option value="">Assign supplier…</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-teal-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-sm animate-fade-in">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <svg className="w-4.5 h-4.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
           </div>
-          {supplierInput && (
-            <button
-              onClick={() => { onAssignSupplier(supplierInput); setSupplierInput('') }}
-              disabled={operating}
-              className="h-7 px-2.5 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white rounded-md transition-colors disabled:opacity-50"
-            >
-              Apply
-            </button>
-          )}
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Delete {count} item{count !== 1 ? 's' : ''}?</p>
+            <p className="text-xs text-slate-500 mt-0.5">This cannot be undone.</p>
+          </div>
         </div>
-
-        {/* Assign category */}
-        <div className="flex items-center gap-1.5">
-          {showCatInput ? (
-            <>
-              <input
-                autoFocus
-                value={newCategoryInput}
-                onChange={e => setNewCategoryInput(e.target.value)}
-                placeholder="Category name…"
-                className="h-7 px-2 text-xs bg-teal-800 border border-teal-700 text-teal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 placeholder-teal-500 w-32"
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newCategoryInput.trim()) {
-                    onAssignCategory(newCategoryInput.trim())
-                    setNewCategoryInput('')
-                    setShowCatInput(false)
-                  }
-                  if (e.key === 'Escape') setShowCatInput(false)
-                }}
-              />
-              {newCategoryInput.trim() && (
-                <button
-                  onClick={() => { onAssignCategory(newCategoryInput.trim()); setNewCategoryInput(''); setShowCatInput(false) }}
-                  disabled={operating}
-                  className="h-7 px-2.5 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white rounded-md transition-colors disabled:opacity-50"
-                >
-                  Apply
-                </button>
-              )}
-              <button onClick={() => setShowCatInput(false)} className="text-teal-400 hover:text-white text-xs">✕</button>
-            </>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <div className="relative">
-                <select
-                  value={categoryInput}
-                  onChange={e => setCategoryInput(e.target.value)}
-                  className="h-7 pl-2 pr-6 text-xs bg-teal-800 border border-teal-700 text-teal-100 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer min-w-[120px]"
-                >
-                  <option value="">Assign category…</option>
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  <option value="__new__">+ New category…</option>
-                </select>
-                <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-teal-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-              {categoryInput && categoryInput !== '__new__' && (
-                <button
-                  onClick={() => { onAssignCategory(categoryInput); setCategoryInput('') }}
-                  disabled={operating}
-                  className="h-7 px-2.5 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white rounded-md transition-colors disabled:opacity-50"
-                >
-                  Apply
-                </button>
-              )}
-              {categoryInput === '__new__' && (
-                <button
-                  onClick={() => { setCategoryInput(''); setShowCatInput(true) }}
-                  className="h-7 px-2.5 text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white rounded-md transition-colors"
-                >
-                  Enter name →
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Spacer + Delete + Clear */}
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex gap-2">
           <button
-            onClick={onDelete}
-            disabled={operating}
-            className="h-7 px-2.5 text-xs font-semibold text-red-300 hover:text-white hover:bg-red-700 border border-red-700/60 rounded-md transition-colors disabled:opacity-50"
+            onClick={onCancel}
+            className="flex-1 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
           >
-            Delete {count}
+            Cancel
           </button>
           <button
-            onClick={onClear}
-            className="text-teal-400 hover:text-white text-xs font-medium transition-colors"
+            onClick={onConfirm}
+            className="flex-1 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
           >
-            Clear
+            Delete {count}
           </button>
         </div>
       </div>
@@ -190,10 +61,291 @@ function BulkBar({
   )
 }
 
-// ─── Restock Inline ─────────────────────────────────────────────────────────
-function RestockCell({ item, onRestock }: { item: Item; onRestock: (id: string, delta: number) => Promise<void> }) {
+// ─── Bulk Action Bar ────────────────────────────────────────────────────────
+interface BulkBarProps {
+  count:        number
+  suppliers:    Supplier[]
+  categories:   Category[]
+  /** null = mixed icons across selected items */
+  currentIcon:  string | null
+  onQtyAdjust:       (delta: number) => void
+  onAssignSupplier:  (id: string)    => void
+  onAssignCategory:  (name: string)  => void
+  onAssignIcon:      (icon: string)  => void
+  onDelete:   () => void
+  onClear:    () => void
+  operating:  boolean
+}
+
+function BulkBar({
+  count, suppliers, categories, currentIcon,
+  onQtyAdjust, onAssignSupplier, onAssignCategory, onAssignIcon,
+  onDelete, onClear, operating,
+}: BulkBarProps) {
+  const [qtyInput,      setQtyInput]      = useState<string>('1')
+  const [supplierInput, setSupplierInput] = useState('')
+  const [categoryInput, setCategoryInput] = useState('')
+  const qty = Math.max(1, parseInt(qtyInput) || 1)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 mb-4 animate-fade-in shadow-sm overflow-visible">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+
+        {/* Selection count */}
+        <span className="text-xs font-semibold text-slate-700 shrink-0">
+          {count} selected
+        </span>
+
+        <div className="w-px h-4 bg-slate-200 shrink-0 hidden sm:block" />
+
+        {/* Qty input + Add / Remove */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-medium text-slate-400 mr-0.5">Qty</span>
+          <input
+            type="number"
+            value={qtyInput}
+            onChange={e => setQtyInput(e.target.value)}
+            min={1}
+            className="w-12 h-7 px-2 text-xs font-semibold text-center border border-slate-200 bg-white text-slate-800 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-slate-300 transition-colors"
+          />
+          <button
+            onClick={() => onQtyAdjust(+qty)}
+            disabled={operating}
+            className="h-7 px-2.5 text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-md transition-colors disabled:opacity-50"
+          >
+            + Add
+          </button>
+          <button
+            onClick={() => onQtyAdjust(-qty)}
+            disabled={operating}
+            className="h-7 px-2.5 text-xs font-medium text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 rounded-md transition-colors disabled:opacity-50"
+          >
+            − Remove
+          </button>
+        </div>
+
+        <div className="w-px h-4 bg-slate-200 shrink-0 hidden sm:block" />
+
+        {/* Assign supplier — portal Dropdown, same as filter bar */}
+        <div className="flex items-center gap-1.5">
+          <Dropdown
+            value={supplierInput}
+            onChange={setSupplierInput}
+            options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+            placeholder="Assign supplier…"
+            size="sm"
+          />
+          {supplierInput && (
+            <button
+              onClick={() => { onAssignSupplier(supplierInput); setSupplierInput('') }}
+              disabled={operating}
+              className="h-7 px-2.5 text-xs font-semibold text-teal-700 border border-teal-300 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-50"
+            >
+              Apply
+            </button>
+          )}
+        </div>
+
+        {/* Assign category — portal Dropdown, same as filter bar */}
+        <div className="flex items-center gap-1.5">
+          <Dropdown
+            value={categoryInput}
+            onChange={setCategoryInput}
+            options={categories.map(c => ({ value: c.name, label: c.name }))}
+            placeholder="Assign category…"
+            size="sm"
+          />
+          {categoryInput && (
+            <button
+              onClick={() => { onAssignCategory(categoryInput); setCategoryInput('') }}
+              disabled={operating}
+              className="h-7 px-2.5 text-xs font-semibold text-teal-700 border border-teal-300 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-50"
+            >
+              Apply
+            </button>
+          )}
+        </div>
+
+        {/* Set icon — portal popover; reflects shared icon or mixed state */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-medium text-slate-400">Icon</span>
+          {currentIcon === null ? (
+            // Mixed icons across selection — show neutral trigger
+            <IconPopoverTrigger
+              value="box"
+              onChange={onAssignIcon}
+              mixedState
+            />
+          ) : (
+            <IconPopoverTrigger
+              value={currentIcon}
+              onChange={onAssignIcon}
+            />
+          )}
+        </div>
+
+        {/* Delete (plain red text) + Clear (muted gray text) — right-aligned */}
+        <div className="flex items-center gap-4 ml-auto">
+          <button
+            onClick={onDelete}
+            disabled={operating}
+            className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors disabled:opacity-40"
+          >
+            Delete {count}
+          </button>
+          <button
+            onClick={onClear}
+            className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Supplier multi-select (inline edit row) ────────────────────────────────
+// Portal-based checklist trigger — does not close on each pick.
+function SupplierMultiSelect({
+  suppliers,
+  selectedIds,
+  onChange,
+}: {
+  suppliers:   Supplier[]
+  selectedIds: Set<string>
+  onChange:    (updated: Set<string>) => void
+}) {
   const [open, setOpen] = useState(false)
-  const [value, setValue] = useState('1')
+  const btnRef  = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    function handle(e: MouseEvent) {
+      const t = e.target as Node
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  // Portal coords
+  const [coords, setCoords] = useState<{ top: number; left: number; minWidth: number } | null>(null)
+  useEffect(() => {
+    if (!open) return
+    function compute() {
+      const rect = btnRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setCoords({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX, minWidth: Math.max(rect.width, 180) })
+    }
+    compute()
+    window.addEventListener('scroll', compute, true)
+    window.addEventListener('resize', compute)
+    return () => {
+      window.removeEventListener('scroll', compute, true)
+      window.removeEventListener('resize', compute)
+    }
+  }, [open])
+
+  function toggle(id: string) {
+    const next = new Set(selectedIds)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onChange(next)
+  }
+
+  // Build summary label
+  const count = selectedIds.size
+  const label = count === 0
+    ? 'No supplier'
+    : count === 1
+      ? (suppliers.find(s => selectedIds.has(s.id))?.name ?? '1 supplier')
+      : `${count} suppliers`
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`
+          inline-flex items-center justify-between gap-2 h-7 pl-2.5 pr-2 text-xs font-medium
+          bg-white border rounded-lg cursor-pointer transition-colors min-w-[140px]
+          focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent
+          ${open ? 'border-teal-500 ring-2 ring-teal-500 text-slate-800' : 'border-teal-400 text-slate-700 hover:border-teal-500'}
+        `}
+      >
+        <span className={`truncate ${count === 0 ? 'text-slate-400' : ''}`}>{label}</span>
+        <svg className={`w-3 h-3 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'absolute', top: coords.top, left: coords.left, minWidth: coords.minWidth, maxWidth: 260, zIndex: 9999 }}
+          className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-fade-in max-h-52 overflow-y-auto"
+        >
+          {/* Clear all option */}
+          <button
+            type="button"
+            onClick={() => onChange(new Set())}
+            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+              count === 0
+                ? 'bg-teal-50 text-teal-800 font-semibold'
+                : 'text-slate-400 hover:bg-teal-50/60 hover:text-teal-700'
+            }`}
+          >
+            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${count === 0 ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
+              {count === 0 && <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </span>
+            No supplier
+          </button>
+
+          {suppliers.length > 0 && <div className="border-t border-slate-100 my-1" />}
+
+          {suppliers.map(s => {
+            const checked = selectedIds.has(s.id)
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => toggle(s.id)}
+                className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                  checked ? 'bg-teal-50 text-teal-800 font-semibold' : 'text-slate-700 hover:bg-teal-50/70 hover:text-teal-800'
+                }`}
+              >
+                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-teal-500 border-teal-500' : 'border-slate-300 bg-white'}`}>
+                  {checked && <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </span>
+                {s.name}
+              </button>
+            )
+          })}
+
+          {suppliers.length === 0 && (
+            <p className="px-3 py-2 text-xs text-slate-400 italic">No suppliers configured</p>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+// ─── Quick +Stock cell ───────────────────────────────────────────────────────────────────
+function QuickStockCell({ item, onAdd }: { item: Item; onAdd: (id: string, delta: number) => Promise<void> }) {
+  const [open,   setOpen]   = useState(false)
+  const [value,  setValue]  = useState('1')
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -204,9 +356,9 @@ function RestockCell({ item, onRestock }: { item: Item; onRestock: (id: string, 
 
   async function handleSave() {
     const delta = parseInt(value)
-    if (!delta || isNaN(delta)) return
+    if (!delta || isNaN(delta) || delta <= 0) return
     setSaving(true)
-    await onRestock(item.id, delta)
+    await onAdd(item.id, delta)
     setOpen(false)
     setValue('1')
     setSaving(false)
@@ -224,37 +376,48 @@ function RestockCell({ item, onRestock }: { item: Item; onRestock: (id: string, 
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <input
         ref={inputRef}
         type="number"
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setOpen(false) }}
-        className="w-14 h-6 px-1.5 text-xs font-semibold text-center border border-emerald-400 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+        placeholder="Add qty"
+        className="w-20 h-7 px-2 text-xs font-semibold text-center border border-emerald-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent bg-white hover:border-emerald-400 transition-colors"
         min={1}
       />
       <button
         onClick={handleSave}
         disabled={saving}
-        className="h-6 px-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50"
+        className="h-7 px-2.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50"
       >
-        {saving ? '…' : '✓'}
+        {saving ? '…' : 'Add'}
       </button>
-      <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600 text-xs leading-none">✕</button>
+      <button
+        onClick={() => setOpen(false)}
+        className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+      >
+        Cancel
+      </button>
     </div>
   )
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
-export default function ItemTable({ initialItems, suppliers }: Props) {
-  const [items, setItems] = useState<Item[]>(initialItems)
-  const [editingId, setEditingId] = useState<string | null>(null)
+export default function ItemTable({ initialItems, suppliers, initialCategories, latestCostMap = {} }: Props) {
+  const [items,      setItems]      = useState<Item[]>(initialItems)
+  const [categories, setCategories] = useState<Category[]>(initialCategories)
+  const [editingId,  setEditingId]  = useState<string | null>(null)
   const [editValues, setEditValues] = useState<Partial<Item>>({})
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [showModal, setShowModal] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [operatingBulk, setOperatingBulk] = useState(false)
+  /** IDs of suppliers selected in the inline edit row (multi-supplier) */
+  const [editSupplierIds, setEditSupplierIds] = useState<Set<string>>(new Set())
+  const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [showModal,         setShowModal]         = useState(false)
+  const [showCatModal,      setShowCatModal]      = useState(false)
+  const [showBulkDelDialog, setShowBulkDelDialog] = useState(false)
+  const [saving,         setSaving]         = useState(false)
+  const [operatingBulk,  setOperatingBulk]  = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
@@ -294,14 +457,30 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
     return () => { supabase.removeChannel(channel) }
   }, [supabase])
 
-  const categories = [...new Set(items.map(i => i.category).filter(Boolean))] as string[]
+  // Item counts per category (for manage modal)
+  const itemCounts: Record<string, number> = {}
+  for (const item of items) {
+    if (item.category) itemCounts[item.category] = (itemCounts[item.category] ?? 0) + 1
+  }
+
+  /**
+   * effectiveCategories — the list used everywhere in the UI.
+   * Priority: managed table (categories state) > derived from items.
+   * This means the page works correctly before the SQL migration is run:
+   * existing item.category strings are surfaced as options automatically.
+   */
+  const effectiveCategories: Category[] = categories.length > 0
+    ? categories
+    : [...new Set(items.map(i => i.category).filter(Boolean))]
+        .sort()
+        .map((name, idx) => ({ id: `derived-${idx}`, name: name as string }))
 
   const filteredItems = items.filter(item => {
     if (filterCategory && item.category !== filterCategory) return false
     if (filterSupplier && (item.supplier as any)?.id !== filterSupplier) return false
     if (filterStock === 'low') return item.quantity < item.min_stock_threshold && item.quantity > 0
     if (filterStock === 'out') return item.quantity === 0
-    if (filterStock === 'ok') return item.quantity >= item.min_stock_threshold
+    if (filterStock === 'ok')  return item.quantity >= item.min_stock_threshold
     return true
   })
 
@@ -317,12 +496,19 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
     setEditValues({
       name: item.name, icon: item.icon,
       quantity: item.quantity, min_stock_threshold: item.min_stock_threshold,
-      unit: item.unit, category: item.category ?? '', supplier_id: item.supplier_id ?? '',
+      unit: item.unit, category: item.category ?? '',
     })
+    // Seed multi-supplier state from item_suppliers junction data
+    const existingIds = ((item.item_suppliers ?? []) as ItemSupplierJoin[])
+      .map(is => is.supplier_id)
+      .filter(Boolean)
+    setEditSupplierIds(new Set(existingIds))
   }
 
   async function saveEdit(id: string) {
     setSaving(true)
+
+    // 1. Save scalar fields on items table
     const { data, error } = await supabase
       .from('items')
       .update({
@@ -330,22 +516,46 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
         quantity: Number(editValues.quantity),
         min_stock_threshold: Number(editValues.min_stock_threshold),
         unit: editValues.unit, category: editValues.category || null,
-        supplier_id: editValues.supplier_id || null,
       })
       .eq('id', id)
-      .select('*, supplier:suppliers(id, name, phone, email)')
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
       .single()
+
     if (!error && data) {
-      setItems(prev => prev.map(i => i.id === id ? data as Item : i))
+      // 2. Diff supplier changes against the junction table
+      const existing = ((data as any).item_suppliers ?? []) as ItemSupplierJoin[]
+      const existingIds = new Set(existing.map((is: ItemSupplierJoin) => is.supplier_id))
+      const wantedIds   = editSupplierIds
+
+      // Delete removed suppliers
+      const toRemove = existing.filter(is => !wantedIds.has(is.supplier_id))
+      if (toRemove.length) {
+        await supabase.from('item_suppliers').delete().in('id', toRemove.map(is => is.id))
+      }
+
+      // Insert newly added suppliers
+      const toAdd = [...wantedIds].filter(sid => !existingIds.has(sid))
+      if (toAdd.length) {
+        await supabase.from('item_suppliers').insert(toAdd.map(sid => ({ item_id: id, supplier_id: sid })))
+      }
+
+      // Re-fetch the item with fresh junction data
+      const { data: fresh } = await supabase
+        .from('items')
+        .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+        .eq('id', id)
+        .single()
+
+      if (fresh) setItems(prev => prev.map(i => i.id === id ? fresh as Item : i))
       setEditingId(null)
     }
     setSaving(false)
   }
 
-  function cancelEdit() { setEditingId(null); setEditValues({}) }
+  function cancelEdit() { setEditingId(null); setEditValues({}); setEditSupplierIds(new Set()) }
 
-  // ── Restock (per-row) ──
-  async function handleRestock(itemId: string, delta: number) {
+  // ── Quick +Stock (no full edit mode) ──
+  async function handleQuickAdd(itemId: string, delta: number) {
     const item = items.find(i => i.id === itemId)
     if (!item) return
     const newQty = Math.max(0, item.quantity + delta)
@@ -413,13 +623,24 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
     setOperatingBulk(false)
   }
 
-  async function bulkDelete() {
-    if (!selected.size) return
-    if (!confirm(`Permanently delete ${selected.size} item(s)?`)) return
+  async function bulkDeleteConfirmed() {
+    setShowBulkDelDialog(false)
     setOperatingBulk(true)
     await supabase.from('items').delete().in('id', [...selected])
     setItems(prev => prev.filter(i => !selected.has(i.id)))
     setSelected(new Set())
+    setOperatingBulk(false)
+  }
+
+  async function bulkAssignIcon(icon: string) {
+    setOperatingBulk(true)
+    const ids = [...selected]
+    await Promise.all(ids.map(async id => {
+      const { data } = await supabase
+        .from('items').update({ icon }).eq('id', id)
+        .select('*, supplier:suppliers(id, name, phone, email)').single()
+      if (data) setItems(prev => prev.map(i => i.id === id ? data as Item : i))
+    }))
     setOperatingBulk(false)
   }
 
@@ -469,7 +690,21 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
     if (!error && data) { setItems(prev => [...prev, data as Item]); setShowModal(false) }
   }
 
-  const allSelectedInView = filteredItems.length > 0 && filteredItems.every(i => selected.has(i.id))
+  // Checkbox states
+  const allSelectedInView   = filteredItems.length > 0 && filteredItems.every(i => selected.has(i.id))
+  const someSelectedInView  = filteredItems.some(i => selected.has(i.id)) && !allSelectedInView
+
+  /**
+   * currentIcon — for the bulk icon trigger.
+   * If all selected items share the same icon → that icon.
+   * If they differ → null (mixed state).
+   */
+  const currentIcon = useMemo(() => {
+    if (selected.size === 0) return 'box'
+    const selectedItems = items.filter(i => selected.has(i.id))
+    const icons = [...new Set(selectedItems.map(i => i.icon ?? 'box'))]
+    return icons.length === 1 ? icons[0] : null
+  }, [selected, items])
 
   return (
     <>
@@ -485,22 +720,37 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
           </svg>
           Add Item
         </button>
+
+        {/* Manage categories — secondary action */}
+        <button
+          id="manage-categories-btn"
+          onClick={() => setShowCatModal(true)}
+          className="inline-flex items-center gap-1.5 h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-600 text-xs font-medium rounded-lg transition-colors"
+        >
+          <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 12h.01M7 17h.01M11 7h6M11 12h6M11 17h6" />
+          </svg>
+          Categories
+        </button>
+
         <div className="flex-1" />
         <button onClick={exportCSV} className="h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors">Export CSV</button>
         <button onClick={() => fileInputRef.current?.click()} className="h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors">Import CSV</button>
         <input ref={fileInputRef} type="file" accept=".csv" onChange={importCSV} className="hidden" />
       </div>
 
-      {/* Bulk action bar — appears when rows are selected */}
+      {/* Bulk action bar */}
       {selected.size > 0 && (
         <BulkBar
           count={selected.size}
           suppliers={suppliers}
-          categories={categories}
+          categories={effectiveCategories}
+          currentIcon={currentIcon}
           onQtyAdjust={bulkQtyAdjust}
           onAssignSupplier={bulkAssignSupplier}
           onAssignCategory={bulkAssignCategory}
-          onDelete={bulkDelete}
+          onAssignIcon={bulkAssignIcon}
+          onDelete={() => setShowBulkDelDialog(true)}
           onClear={() => setSelected(new Set())}
           operating={operatingBulk}
         />
@@ -511,7 +761,7 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
         <Dropdown
           value={filterCategory}
           onChange={setFilterCategory}
-          options={categories.map(c => ({ value: c, label: c }))}
+          options={effectiveCategories.map(c => ({ value: c.name, label: c.name }))}
           placeholder="All categories"
           size="sm"
         />
@@ -550,8 +800,13 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
           <thead className="bg-slate-50/80 border-b border-slate-200">
             <tr className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
               <th className="px-3 py-3 w-9">
-                <input type="checkbox" checked={allSelectedInView} onChange={toggleAll}
-                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
+                <input
+                  type="checkbox"
+                  checked={allSelectedInView}
+                  ref={el => { if (el) el.indeterminate = someSelectedInView }}
+                  onChange={toggleAll}
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
               </th>
               <th className="px-3 py-3">Item name</th>
               <th className="px-3 py-3">Category</th>
@@ -559,6 +814,7 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
               <th className="px-3 py-3">Unit</th>
               <th className="px-3 py-3 hidden md:table-cell">Min</th>
               <th className="px-3 py-3 hidden md:table-cell">Supplier</th>
+              <th className="px-3 py-3 hidden lg:table-cell">Value</th>
               <th className="px-3 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -584,19 +840,22 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
                   {/* Name + Icon */}
                   <td className="px-3 py-2.5 font-medium text-slate-900">
                     <div className="flex items-center gap-2">
-                      {/* Stock dot */}
                       {!isEditing && (
                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                           isOut ? 'bg-red-500' : isLow ? 'bg-amber-400' : 'bg-transparent'
                         }`} />
                       )}
                       {isEditing
-                        ? <div className="space-y-2 w-full min-w-[200px]">
-                            <input value={editValues.name ?? ''} onChange={e => setEditValues(p => ({ ...p, name: e.target.value }))}
-                              className="w-full px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white" />
-                            <IconPicker
+                        ? <div className="flex items-center gap-2 w-full min-w-[200px]">
+                            {/* Icon popover — floats, does not push rows down */}
+                            <IconPopoverTrigger
                               value={editValues.icon ?? 'box'}
                               onChange={id => setEditValues(p => ({ ...p, icon: id }))}
+                            />
+                            <input
+                              value={editValues.name ?? ''}
+                              onChange={e => setEditValues(p => ({ ...p, name: e.target.value }))}
+                              className="flex-1 px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
                             />
                           </div>
                         : <span className="text-sm">{item.name}</span>
@@ -607,8 +866,22 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
                   {/* Category */}
                   <td className="px-3 py-2.5 text-slate-500 text-xs">
                     {isEditing
-                      ? <input value={editValues.category ?? ''} onChange={e => setEditValues(p => ({ ...p, category: e.target.value }))}
-                          className="w-full min-w-[90px] px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white" placeholder="e.g. PPE" />
+                      ? effectiveCategories.length > 0
+                        ? <div className="relative">
+                            <select
+                              value={editValues.category ?? ''}
+                              onChange={e => setEditValues(p => ({ ...p, category: e.target.value }))}
+                              className="w-full min-w-[110px] appearance-none pl-2 pr-7 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white cursor-pointer"
+                            >
+                              <option value="">No category</option>
+                              {effectiveCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            </select>
+                            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        : <input value={editValues.category ?? ''} onChange={e => setEditValues(p => ({ ...p, category: e.target.value }))}
+                            className="w-full min-w-[90px] px-2 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white" placeholder="e.g. PPE" />
                       : item.category
                         ? <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium">{item.category}</span>
                         : <span className="text-slate-300">—</span>
@@ -642,21 +915,41 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
                     }
                   </td>
 
-                  {/* Supplier */}
+                  {/* Supplier — multi-select (junction table) */}
                   <td className="px-3 py-2.5 text-slate-500 text-xs hidden md:table-cell">
                     {isEditing
-                      ? <div className="relative">
-                          <select value={editValues.supplier_id ?? ''} onChange={e => setEditValues(p => ({ ...p, supplier_id: e.target.value }))}
-                            className="w-full min-w-[140px] appearance-none pl-2 pr-7 py-1 text-sm border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white cursor-pointer">
-                            <option value="">No supplier</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                          <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      : ((item.supplier as any)?.name ?? <span className="text-slate-300">—</span>)
+                      ? <SupplierMultiSelect
+                          suppliers={suppliers}
+                          selectedIds={editSupplierIds}
+                          onChange={setEditSupplierIds}
+                        />
+                      : (() => {
+                          const assigned = (item.item_suppliers as any[])
+                          const names = assigned?.map((is: any) => is.supplier?.name).filter(Boolean) ?? []
+                          return names.length > 0
+                            ? <span>{names.join(', ')}</span>
+                            : <span className="text-slate-300">—</span>
+                        })()
                     }
+                  </td>
+
+                  {/* Value (qty × latest cost) */}
+                  <td className="px-3 py-2.5 text-slate-600 text-xs tabular-nums hidden lg:table-cell">
+                    {(() => {
+                      const cost = latestCostMap[item.id]
+                      if (!cost) return (
+                        <span
+                          className="text-slate-300 cursor-help"
+                          title="No restock cost recorded yet"
+                        >—</span>
+                      )
+                      const val = item.quantity * cost
+                      return (
+                        <span className="font-medium">
+                          ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )
+                    })()}
                   </td>
 
                   {/* Actions */}
@@ -670,7 +963,9 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
                       </div>
                     ) : (
                       <div className="flex items-center justify-end gap-3">
-                        <RestockCell item={item} onRestock={handleRestock} />
+                        {/* Quick +Stock — does NOT open edit mode */}
+                        <QuickStockCell item={item} onAdd={handleQuickAdd} />
+                        <button onClick={() => router.push(`/inventory/${item.id}`)} className="text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors">Details</button>
                         <button onClick={() => startEdit(item)} className="text-xs font-medium text-teal-700 hover:text-teal-900 hover:underline transition-colors">Edit</button>
                         <button
                           onClick={() => deleteItem(item.id)}
@@ -689,7 +984,7 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
             })}
             {filteredItems.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center bg-slate-50/50">
+                <td colSpan={9} className="px-4 py-16 text-center bg-slate-50/50">
                   <div className="flex justify-center mb-4 text-slate-300">
                     <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -710,8 +1005,31 @@ export default function ItemTable({ initialItems, suppliers }: Props) {
         </table>
       </div>
 
+      {/* Modals */}
       {showModal && (
-        <AddItemModal suppliers={suppliers} onClose={() => setShowModal(false)} onSave={handleAdd} />
+        <AddItemModal
+          suppliers={suppliers}
+          categories={effectiveCategories}
+          onClose={() => setShowModal(false)}
+          onSave={handleAdd}
+        />
+      )}
+
+      {showCatModal && (
+        <ManageCategoriesModal
+          categories={effectiveCategories}
+          itemCounts={itemCounts}
+          onClose={() => setShowCatModal(false)}
+          onChange={updated => setCategories(updated)}
+        />
+      )}
+
+      {showBulkDelDialog && (
+        <BulkDeleteDialog
+          count={selected.size}
+          onConfirm={bulkDeleteConfirmed}
+          onCancel={() => setShowBulkDelDialog(false)}
+        />
       )}
     </>
   )

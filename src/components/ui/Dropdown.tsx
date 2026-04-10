@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface DropdownOption {
   value: string
@@ -17,23 +18,86 @@ interface Props {
   id?: string
 }
 
+// ─── Portal menu ──────────────────────────────────────────────────────────────
+// Rendered into <body> so it is never clipped by any ancestor's overflow,
+// border-radius stacking context, or z-index.
+interface MenuProps {
+  buttonRef: React.RefObject<HTMLButtonElement | null>
+  menuRef:   React.RefObject<HTMLDivElement | null>
+  children:  React.ReactNode
+}
+
+function DropdownMenu({ buttonRef, menuRef, children }: MenuProps) {
+  const [coords, setCoords] = useState<{
+    top: number; left: number; minWidth: number
+  } | null>(null)
+
+  useEffect(() => {
+    function compute() {
+      const rect = buttonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setCoords({
+        top:      rect.bottom + window.scrollY + 4,
+        left:     rect.left   + window.scrollX,
+        // Use the button's own width as minimum — capped at 280px max
+        minWidth: Math.min(rect.width, 280),
+      })
+    }
+    compute()
+    window.addEventListener('scroll', compute, true)
+    window.addEventListener('resize', compute)
+    return () => {
+      window.removeEventListener('scroll', compute, true)
+      window.removeEventListener('resize', compute)
+    }
+  }, [buttonRef])
+
+  if (!coords) return null
+
+  return createPortal(
+    <div
+      ref={menuRef as React.RefObject<HTMLDivElement>}
+      style={{
+        position: 'absolute',
+        top:      coords.top,
+        left:     coords.left,
+        minWidth: coords.minWidth,
+        maxWidth: 280,          // hard cap — never spans the page
+        zIndex:   9999,
+      }}
+      className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-fade-in max-h-60 overflow-y-auto"
+    >
+      {children}
+    </div>,
+    document.body
+  )
+}
+
+// ─── Main dropdown ─────────────────────────────────────────────────────────────
 export default function Dropdown({
   value, onChange, options, placeholder = 'Select…', size = 'sm', className = '', id,
 }: Props) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [open, setOpen]     = useState(false)
+  const wrapperRef          = useRef<HTMLDivElement>(null)
+  const buttonRef           = useRef<HTMLButtonElement>(null)
+  const menuRef             = useRef<HTMLDivElement>(null)
 
-  const selected = options.find(o => o.value === value)
-  const displayLabel = selected?.label ?? placeholder
+  const selected      = options.find(o => o.value === value)
+  const displayLabel  = selected?.label ?? placeholder
+  const isPlaceholder = !value
 
-  // Close on outside click
+  // Close on outside click — exclude both the trigger wrapper and the portal menu
+  const handleOutsideClick = useCallback((e: MouseEvent) => {
+    const target = e.target as Node
+    if (wrapperRef.current?.contains(target)) return
+    if (menuRef.current?.contains(target))    return
+    setOpen(false)
+  }, [])
+
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    if (open) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
+    if (open) document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [open, handleOutsideClick])
 
   // Close on Escape
   useEffect(() => {
@@ -44,29 +108,24 @@ export default function Dropdown({
     return () => document.removeEventListener('keydown', handleKey)
   }, [open])
 
-  const heights = {
-    sm: 'h-7 px-2.5 text-xs min-w-[130px]',
-    md: 'h-10 px-3.5 text-sm min-w-[160px]',
-  }
-
-  const isPlaceholder = !value
+  // Button sizing — no w-full so it never stretches to fill a flex container
+  const sizeClass = size === 'md'
+    ? 'h-10 px-3.5 text-sm min-w-[160px]'
+    : 'h-7  px-2.5 text-xs min-w-[130px]'
 
   return (
-    <div ref={ref} className={`relative ${className}`} id={id}>
-      {/* Trigger */}
+    <div ref={wrapperRef} className={`relative inline-block ${className}`} id={id}>
+      {/* Trigger button — sized by its own min-w, not by parent flex width */}
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen(o => !o)}
         className={`
-          flex items-center justify-between gap-2 w-full
-          bg-white border rounded-lg cursor-pointer
-          font-medium transition-colors
+          inline-flex items-center justify-between gap-2
+          bg-white border rounded-lg cursor-pointer font-medium transition-colors
           focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent
-          ${open
-            ? 'border-teal-500 ring-2 ring-teal-500'
-            : 'border-slate-200 hover:border-slate-300'
-          }
-          ${heights[size]}
+          ${open ? 'border-teal-500 ring-2 ring-teal-500' : 'border-slate-200 hover:border-slate-300'}
+          ${sizeClass}
           ${isPlaceholder ? 'text-slate-400' : 'text-slate-800'}
         `}
       >
@@ -79,17 +138,17 @@ export default function Dropdown({
         </svg>
       </button>
 
-      {/* Menu */}
+      {/* Menu — portalled into <body>, never clipped by parent containers */}
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-full overflow-hidden animate-fade-in">
-          {/* Placeholder / clear option */}
+        <DropdownMenu buttonRef={buttonRef} menuRef={menuRef}>
+          {/* Clear / all option */}
           <button
             type="button"
             onClick={() => { onChange(''); setOpen(false) }}
             className={`w-full text-left px-3 py-2 text-xs transition-colors ${
               !value
                 ? 'bg-teal-50 text-teal-800 font-semibold'
-                : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'
+                : 'text-slate-400 hover:bg-teal-50/60 hover:text-teal-700'
             }`}
           >
             {placeholder}
@@ -102,12 +161,16 @@ export default function Dropdown({
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false) }}
-              className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+              className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
                 value === opt.value
                   ? 'bg-teal-50 text-teal-800 font-semibold'
-                  : 'text-slate-700 hover:bg-slate-50'
+                  : 'text-slate-700 hover:bg-teal-50/70 hover:text-teal-800'
               }`}
             >
+              {/* Selected checkmark */}
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                value === opt.value ? 'bg-teal-500' : 'bg-transparent'
+              }`} />
               {opt.label}
             </button>
           ))}
@@ -115,7 +178,7 @@ export default function Dropdown({
           {options.length === 0 && (
             <p className="px-3 py-2 text-xs text-slate-400 italic">No options</p>
           )}
-        </div>
+        </DropdownMenu>
       )}
     </div>
   )
