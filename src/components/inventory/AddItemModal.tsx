@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Item, Supplier, Category } from '@/lib/types'
+import { Unit } from './ManageUnitsModal'
 import IconPicker from '@/components/ui/IconPicker'
 import Dropdown from '@/components/ui/Dropdown'
 import SupplierMultiSelect from '@/components/ui/SupplierMultiSelect'
@@ -9,6 +10,7 @@ import SupplierMultiSelect from '@/components/ui/SupplierMultiSelect'
 interface Props {
   suppliers:  Supplier[]
   categories: Category[]
+  units?:     Unit[]
   onClose: () => void
   /** values carries the scalar fields; supplierIds carries the junction-table selections */
   onSave: (values: Partial<Item>, supplierIds: Set<string>) => void
@@ -27,7 +29,7 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   )
 }
 
-export default function AddItemModal({ suppliers, categories, onClose, onSave }: Props) {
+export default function AddItemModal({ suppliers, categories, units = [], onClose, onSave }: Props) {
   const [values, setValues] = useState<Partial<Item>>({
     icon: 'box',
     name: '',
@@ -115,10 +117,14 @@ export default function AddItemModal({ suppliers, categories, onClose, onSave }:
                 <Dropdown
                   value={values.unit ?? 'units'}
                   onChange={v => set('unit', v)}
-                  options={[
-                    { value: 'units', label: 'Units' },
-                    { value: 'boxes', label: 'Boxes' },
-                  ]}
+                  options={
+                    units.length > 0
+                      ? units.map(u => ({ value: u.name, label: u.name }))
+                      : [
+                          { value: 'units', label: 'Units' },
+                          { value: 'boxes', label: 'Boxes' },
+                        ]
+                  }
                   size="md"
                 />
               </div>

@@ -58,7 +58,7 @@ export default async function ItemDetailPage({ params }: Props) {
   if (!item) notFound()
 
   const supabase = await createClient()
-  const [{ data: suppliers }, { data: logs }, { data: lots }] = await Promise.all([
+  const [{ data: suppliers }, { data: logs }, { data: lots }, { data: categories }] = await Promise.all([
     supabase.from('suppliers').select('*').order('name'),
     // Try with supplier join; silently fall back if supplier_id column missing
     supabase
@@ -77,6 +77,9 @@ export default async function ItemDetailPage({ params }: Props) {
       .select('quantity_remaining, cost_per_unit')
       .eq('item_id', id)
       .gt('quantity_remaining', 0)
+      .then(res => res.error ? { data: [] } : res),
+    // Categories for edit form dropdown
+    supabase.from('categories').select('id, name').order('name')
       .then(res => res.error ? { data: [] } : res),
   ])
 
@@ -124,6 +127,7 @@ export default async function ItemDetailPage({ params }: Props) {
           item={item}
           allSuppliers={(suppliers as any) ?? []}
           initialLogs={(logs as any) ?? []}
+          categories={(categories as any) ?? []}
           fifoValue={fifoValue}
           fifoAvgCost={fifoAvgCost}
         />

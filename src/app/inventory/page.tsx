@@ -15,7 +15,7 @@ export default async function InventoryPage() {
   const supabase = await createClient()
 
   // All queries in parallel — no sequential waterfalls
-  const [itemsResult, suppliersRes, categoriesRes, lotsRes] = await Promise.all([
+  const [itemsResult, suppliersRes, categoriesRes, lotsRes, unitsRes] = await Promise.all([
     // Items: try full join, fall back if item_suppliers migration hasn't run
     supabase
       .from('items')
@@ -47,6 +47,12 @@ export default async function InventoryPage() {
       .not('cost_per_unit', 'is', null)
       .gt('cost_per_unit', 0)
       .then(res => res.error ? { data: [] } : res),
+    // Units: falls back gracefully if the table doesn't exist yet
+    supabase
+      .from('units')
+      .select('id, name')
+      .order('name')
+      .then(res => res.error ? { data: [] } : res),
   ])
 
   const items = itemsResult as any[]
@@ -64,6 +70,7 @@ export default async function InventoryPage() {
 
   // If categories table doesn't exist yet, fall back to deriving from items
   const categories = categoriesRes.data ?? []
+  const units = (unitsRes as any).data ?? []
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:pt-[60px]">
@@ -103,6 +110,7 @@ export default async function InventoryPage() {
             initialItems={(items as any) ?? []}
             suppliers={suppliersRes.data ?? []}
             initialCategories={categories as any}
+            initialUnits={units as any}
             fifoValueMap={fifoValueMap}
           />
         </Suspense>

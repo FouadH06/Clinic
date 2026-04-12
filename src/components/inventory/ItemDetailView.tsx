@@ -1,15 +1,19 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Item, Supplier, UsageLog, ItemSupplierJoin } from '@/lib/types'
+import { Item, Supplier, UsageLog, ItemSupplierJoin, Category } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { IconPopoverTrigger } from '@/components/ui/IconPicker'
+import SupplierMultiSelect from '@/components/ui/SupplierMultiSelect'
+import Dropdown from '@/components/ui/Dropdown'
 
 interface Props {
   item: Item
   allSuppliers: Supplier[]
   initialLogs: UsageLog[]
+  categories?: Category[]
   /** Pre-computed from inventory_lots on the server. null = no FIFO data yet. */
   fifoValue: number | null
   /** fifoValue ÷ current qty. null when no priced lots or qty = 0. */
@@ -466,12 +470,176 @@ function RestockUsageTab({ item, logs, fifoValue, fifoAvgCost }: {
   )
 }
 
+// ─── Inline edit form ─────────────────────────────────────────────────────────
+function EditForm({
+  item,
+  allSuppliers,
+  itemSuppliers,
+  categories,
+  onSave,
+  onCancel,
+}: {
+  item: Item
+  allSuppliers: Supplier[]
+  itemSuppliers: ItemSupplierJoin[]
+  categories: Category[]
+  onSave: (updated: Partial<Item>, supplierIds: Set<string>) => Promise<void>
+  onCancel: () => void
+}) {
+  const [values, setValues] = useState<Partial<Item>>({
+    name: item.name,
+    icon: item.icon ?? 'box',
+    quantity: item.quantity,
+    min_stock_threshold: item.min_stock_threshold,
+    unit: item.unit ?? 'units',
+    category: item.category ?? '',
+  })
+  const [supplierIds, setSupplierIds] = useState<Set<string>>(
+    new Set((itemSuppliers as ItemSupplierJoin[]).map(is => is.supplier_id))
+  )
+  const [saving, setSaving] = useState(false)
+
+  function set<K extends keyof Item>(field: K, value: Item[K]) {
+    setValues(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function handleSave() {
+    if (!values.name?.trim()) return
+    setSaving(true)
+    await onSave(values, supplierIds)
+    setSaving(false)
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* Row 1: Icon + Name */}
+      <div>
+        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Item Name</label>
+        <div className="flex items-center gap-2">
+          <IconPopoverTrigger
+            value={values.icon ?? 'box'}
+            onChange={v => set('icon', v)}
+          />
+          <input
+            value={values.name ?? ''}
+            onChange={e => set('name', e.target.value)}
+            className="flex-1 h-10 px-3 text-sm font-medium border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-slate-900 hover:border-slate-300 transition-colors"
+            placeholder="Item name"
+            autoFocus
+          />
+        </div>
+      </div>
+
+      {/* Row 2: Qty + Unit + Min Threshold */}
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Quantity</label>
+          <input
+            type="number"
+            value={values.quantity ?? 0}
+            onChange={e => set('quantity', Number(e.target.value))}
+            min={0}
+            className="w-full h-10 px-3 text-sm font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-slate-900 hover:border-slate-300 transition-colors text-center"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Unit</label>
+          <Dropdown
+            value={values.unit ?? 'units'}
+            onChange={v => set('unit', v)}
+            options={[
+              { value: 'units', label: 'Units' },
+              { value: 'boxes', label: 'Boxes' },
+              { value: 'bottles', label: 'Bottles' },
+              { value: 'vials', label: 'Vials' },
+              { value: 'packs', label: 'Packs' },
+              { value: 'rolls', label: 'Rolls' },
+              { value: 'pairs', label: 'Pairs' },
+              { value: 'sheets', label: 'Sheets' },
+            ]}
+            size="md"
+            className="w-full"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Min Threshold</label>
+          <input
+            type="number"
+            value={values.min_stock_threshold ?? 0}
+            onChange={e => set('min_stock_threshold', Number(e.target.value))}
+            min={0}
+            className="w-full h-10 px-3 text-sm font-semibold border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-slate-900 hover:border-slate-300 transition-colors text-center"
+          />
+        </div>
+      </div>
+
+      {/* Row 3: Category */}
+      <div>
+        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
+        {categories.length > 0 ? (
+          <Dropdown
+            value={values.category ?? ''}
+            onChange={v => set('category', v)}
+            options={categories.map(c => ({ value: c.name, label: c.name }))}
+            placeholder="No category"
+            size="md"
+            className="w-full"
+          />
+        ) : (
+          <input
+            value={values.category ?? ''}
+            onChange={e => set('category', e.target.value)}
+            placeholder="e.g. PPE, Meds, Prosthetic dentistry…"
+            className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white text-slate-900 hover:border-slate-300 transition-colors placeholder-slate-400"
+          />
+        )}
+      </div>
+
+      {/* Row 4: Suppliers */}
+      <div>
+        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Suppliers</label>
+        <SupplierMultiSelect
+          suppliers={allSuppliers}
+          selectedIds={supplierIds}
+          onChange={setSupplierIds}
+          size="md"
+        />
+      </div>
+
+      {/* Divider */}
+      <hr className="border-slate-100" />
+
+      {/* Save / Cancel */}
+      <div className="flex gap-3">
+        <button
+          onClick={onCancel}
+          className="flex-1 h-10 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={!values.name?.trim() || saving}
+          className="flex-1 h-10 text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+
+    </div>
+  )
+}
+
 // ─── Root component ───────────────────────────────────────────────────────────
-export default function ItemDetailView({ item, allSuppliers, initialLogs, fifoValue, fifoAvgCost }: Props) {
+export default function ItemDetailView({ item, allSuppliers, initialLogs, categories = [], fifoValue, fifoAvgCost }: Props) {
   const [activeTab, setActiveTab] = useState<'info' | 'history'>('info')
+  const [isEditing, setIsEditing] = useState(false)
+  const [currentItem, setCurrentItem] = useState<Item>(item)
   const [itemSuppliers, setItemSuppliers] = useState<ItemSupplierJoin[]>(
     (item.item_suppliers as ItemSupplierJoin[]) ?? []
   )
+  const supabase = createClient()
   const router = useRouter()
 
   const tabs = [
@@ -479,51 +647,120 @@ export default function ItemDetailView({ item, allSuppliers, initialLogs, fifoVa
     { id: 'history' as const, label: 'Restock & Usage' },
   ]
 
+  async function handleSave(updated: Partial<Item>, supplierIds: Set<string>) {
+    // 1. Update scalar fields
+    const { data, error } = await supabase
+      .from('items')
+      .update({
+        name: updated.name,
+        icon: updated.icon,
+        quantity: Number(updated.quantity),
+        min_stock_threshold: Number(updated.min_stock_threshold),
+        unit: updated.unit,
+        category: updated.category || null,
+      })
+      .eq('id', currentItem.id)
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+      .single()
+
+    if (error || !data) return
+
+    // 2. Diff supplier junction table
+    const existing = (data as any).item_suppliers as ItemSupplierJoin[]
+    const existingIds = new Set(existing.map((is: ItemSupplierJoin) => is.supplier_id))
+    const toRemove = existing.filter(is => !supplierIds.has(is.supplier_id))
+    const toAdd    = [...supplierIds].filter(sid => !existingIds.has(sid))
+
+    if (toRemove.length) {
+      await supabase.from('item_suppliers').delete().in('id', toRemove.map(is => is.id))
+    }
+    if (toAdd.length) {
+      await supabase.from('item_suppliers').insert(toAdd.map(sid => ({ item_id: currentItem.id, supplier_id: sid })))
+    }
+
+    // 3. Re-fetch fresh item with updated junctions
+    const { data: fresh } = await supabase
+      .from('items')
+      .select('*, item_suppliers(id, supplier_id, supplier:suppliers(id, name, phone, email, notes))')
+      .eq('id', currentItem.id)
+      .single()
+
+    if (fresh) {
+      setCurrentItem(fresh as Item)
+      setItemSuppliers((fresh as any).item_suppliers ?? [])
+    }
+    setIsEditing(false)
+    router.refresh()
+  }
+
   return (
     <div>
       {/* Action bar */}
       <div className="flex items-center justify-between gap-4 mb-5">
-        {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-slate-200 flex-1">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`pb-2.5 px-1 mr-4 text-sm font-medium border-b-2 transition-all duration-150 -mb-px ${
-                activeTab === tab.id
-                  ? 'border-teal-700 text-teal-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Tabs — hidden while editing to keep the header clean */}
+        {!isEditing ? (
+          <div className="flex items-center gap-1 border-b border-slate-200 flex-1">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`pb-2.5 px-1 mr-4 text-sm font-medium border-b-2 transition-all duration-150 -mb-px ${
+                  activeTab === tab.id
+                    ? 'border-teal-700 text-teal-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-semibold text-slate-700 border-b border-slate-200 flex-1 pb-2.5">
+            Edit item
+          </p>
+        )}
 
-        {/* Edit button */}
-        <Link
-          href={`/inventory?edit=${item.id}`}
-          className="shrink-0 flex items-center gap-1.5 h-8 px-3 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-          Edit item
-        </Link>
+        {/* Edit / Cancel toggle */}
+        {!isEditing ? (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="shrink-0 flex items-center gap-1.5 h-8 px-3 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Edit item
+          </button>
+        ) : (
+          <button
+            onClick={() => setIsEditing(false)}
+            className="shrink-0 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            ✕ Cancel
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-card p-6">
-        {activeTab === 'info' && (
+        {isEditing ? (
+          <EditForm
+            item={currentItem}
+            allSuppliers={allSuppliers}
+            itemSuppliers={itemSuppliers}
+            categories={categories}
+            onSave={handleSave}
+            onCancel={() => setIsEditing(false)}
+          />
+        ) : activeTab === 'info' ? (
           <ProductInfoTab
-            item={item}
+            item={currentItem}
             allSuppliers={allSuppliers}
             itemSuppliers={itemSuppliers}
             onSuppliersUpdate={setItemSuppliers}
           />
-        )}
-        {activeTab === 'history' && (
+        ) : (
           <RestockUsageTab
-            item={item}
+            item={currentItem}
             logs={initialLogs}
             fifoValue={fifoValue}
             fifoAvgCost={fifoAvgCost}
@@ -533,3 +770,4 @@ export default function ItemDetailView({ item, allSuppliers, initialLogs, fifoVa
     </div>
   )
 }
+

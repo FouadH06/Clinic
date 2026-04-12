@@ -124,6 +124,7 @@ export default function SupplierMultiSelect({
             maxWidth: 280,
             zIndex:   9999,
           }}
+          onMouseDown={e => e.stopPropagation()}
           className="bg-white border border-slate-200 rounded-xl shadow-xl py-1 animate-fade-in max-h-52 overflow-y-auto"
         >
           {/* None option */}

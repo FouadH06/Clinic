@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { consumeFifoLots } from '@/lib/fifo'
 import AddItemModal from './AddItemModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
+import ManageUnitsModal, { Unit } from './ManageUnitsModal'
 import Dropdown from '@/components/ui/Dropdown'
 import IconPicker, { IconPopoverTrigger } from '@/components/ui/IconPicker'
 import SupplierMultiSelect from '@/components/ui/SupplierMultiSelect'
@@ -16,6 +17,7 @@ interface Props {
   initialItems:   Item[]
   suppliers:      Supplier[]
   initialCategories: Category[]
+  initialUnits?:  Unit[]
   latestCostMap?: Record<string, number>   // kept for type compat — unused
   fifoValueMap?:  Record<string, number>   // FIFO item value (sum of lot.qty_remaining × lot.cost)
 }
@@ -276,9 +278,10 @@ function QuickStockCell({ item, onAdd }: { item: Item; onAdd: (id: string, delta
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
-export default function ItemTable({ initialItems, suppliers, initialCategories, latestCostMap = {}, fifoValueMap = {} }: Props) {
+export default function ItemTable({ initialItems, suppliers, initialCategories, initialUnits = [], latestCostMap = {}, fifoValueMap = {} }: Props) {
   const [items,      setItems]      = useState<Item[]>(initialItems)
   const [categories, setCategories] = useState<Category[]>(initialCategories)
+  const [units,      setUnits]      = useState<Unit[]>(initialUnits)
   const [editingId,  setEditingId]  = useState<string | null>(null)
   const [editValues, setEditValues] = useState<Partial<Item>>({})
   /** IDs of suppliers selected in the inline edit row (multi-supplier) */
@@ -286,6 +289,7 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
   const [showModal,         setShowModal]         = useState(false)
   const [showCatModal,      setShowCatModal]      = useState(false)
+  const [showUnitsModal,    setShowUnitsModal]    = useState(false)
   const [showBulkDelDialog, setShowBulkDelDialog] = useState(false)
   const [saving,         setSaving]         = useState(false)
   const [operatingBulk,  setOperatingBulk]  = useState(false)
@@ -333,6 +337,21 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
   for (const item of items) {
     if (item.category) itemCounts[item.category] = (itemCounts[item.category] ?? 0) + 1
   }
+
+  // Item counts per unit (for manage units modal)
+  const unitCounts: Record<string, number> = {}
+  for (const item of items) {
+    if (item.unit) unitCounts[item.unit] = (unitCounts[item.unit] ?? 0) + 1
+  }
+
+  /**
+   * effectiveUnits — units from the managed table, or derived from items if no table yet.
+   */
+  const effectiveUnits: Unit[] = units.length > 0
+    ? units
+    : [...new Set(items.map(i => i.unit).filter(Boolean))]
+        .sort()
+        .map((name, idx) => ({ id: `derived-unit-${idx}`, name: name as string }))
 
   /**
    * effectiveCategories — the list used everywhere in the UI.
@@ -638,6 +657,18 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
           Categories
         </button>
 
+        {/* Manage units — secondary action */}
+        <button
+          id="manage-units-btn"
+          onClick={() => setShowUnitsModal(true)}
+          className="inline-flex items-center gap-1.5 h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-600 text-xs font-medium rounded-lg transition-colors"
+        >
+          <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+          Units
+        </button>
+
         <div className="flex-1" />
         <button onClick={exportCSV} className="h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors">Export CSV</button>
         <button onClick={() => fileInputRef.current?.click()} className="h-8 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium rounded-lg transition-colors">Import CSV</button>
@@ -720,7 +751,7 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
               <th className="px-3 py-3 hidden md:table-cell">Min</th>
               <th className="px-3 py-3 hidden md:table-cell">Supplier</th>
               <th className="px-3 py-3 hidden lg:table-cell">Value</th>
-              <th className="px-3 py-3 text-right">Actions</th>
+              <th className="px-3 py-3 text-right sticky right-0 bg-slate-50/80 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.04)]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -797,17 +828,13 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
                   {/* Unit */}
                   <td className="px-3 py-2.5 text-slate-500 text-xs">
                     {isEditing
-                      ? <div className="w-[88px]">
-                          <Dropdown
-                            value={editValues.unit ?? 'units'}
-                            onChange={v => setEditValues(p => ({ ...p, unit: v }))}
-                            options={[
-                              { value: 'units', label: 'Units' },
-                              { value: 'boxes', label: 'Boxes' },
-                            ]}
-                            size="sm"
-                          />
-                        </div>
+                      ? <Dropdown
+                          value={editValues.unit ?? 'units'}
+                          onChange={v => setEditValues(p => ({ ...p, unit: v }))}
+                          options={effectiveUnits.map(u => ({ value: u.name, label: u.name }))}
+                          placeholder="Select unit"
+                          size="sm"
+                        />
                       : item.unit
                     }
                   </td>
@@ -860,8 +887,14 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
                     })()}
                   </td>
 
-                  {/* Actions */}
-                  <td className="px-3 py-2.5 text-right">
+                  {/* Actions — sticky right so Save/Cancel are always visible */}
+                  <td className={`px-3 py-2.5 text-right sticky right-0 z-10 shadow-[-8px_0_8px_-4px_rgba(0,0,0,0.04)] transition-colors ${
+                    selected.has(item.id) ? 'bg-teal-50/50'
+                    : isEditing ? 'bg-slate-50'
+                    : isOut && !isEditing ? 'bg-red-50/30'
+                    : isLow && !isEditing ? 'bg-amber-50/25'
+                    : 'bg-white'
+                  }`}>
                     {isEditing ? (
                       <div className="flex justify-end gap-1.5">
                         <button onClick={cancelEdit} className="px-2.5 py-1 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-md transition-colors">Cancel</button>
@@ -918,6 +951,7 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
         <AddItemModal
           suppliers={suppliers}
           categories={effectiveCategories}
+          units={effectiveUnits}
           onClose={() => setShowModal(false)}
           onSave={handleAdd}
         />
@@ -929,6 +963,15 @@ export default function ItemTable({ initialItems, suppliers, initialCategories, 
           itemCounts={itemCounts}
           onClose={() => setShowCatModal(false)}
           onChange={updated => setCategories(updated)}
+        />
+      )}
+
+      {showUnitsModal && (
+        <ManageUnitsModal
+          units={effectiveUnits}
+          itemCounts={unitCounts}
+          onClose={() => setShowUnitsModal(false)}
+          onChange={updated => setUnits(updated)}
         />
       )}
 
