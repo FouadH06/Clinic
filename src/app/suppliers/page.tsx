@@ -4,7 +4,7 @@ import SupplierList from '@/components/suppliers/SupplierList'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Suppliers – Teissir Dental Inventory',
+  title: 'Suppliers',
   description: 'Manage dental supply vendors and their contact information.',
 }
 

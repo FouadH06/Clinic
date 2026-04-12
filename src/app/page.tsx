@@ -5,7 +5,6 @@ import type { Item } from '@/lib/types'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Dashboard – Teissir Dental Inventory',
   description: 'Quickly log item usage and monitor stock levels in real time.',
 }
 

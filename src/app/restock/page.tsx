@@ -5,7 +5,7 @@ import type { Item, UsageLog } from '@/lib/types'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Restock – Teissir Dental Inventory',
+  title: 'Restock',
   description: 'Plan and confirm refill orders for dental clinic supplies.',
 }
 

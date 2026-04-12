@@ -2,7 +2,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Teissir – Dental Clinic Inventory',
+  title: {
+    template: '%s | Teissire Clinic',
+    default:  'Teissire Clinic',
+  },
   description: 'Fast POS-style dental clinic inventory management. Track stock, log usage, and get low-stock alerts in real time.',
 }
 

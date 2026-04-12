@@ -148,6 +148,9 @@ export default function ItemGrid({ initialItems }: Props) {
         {/* ── Left Sidebar ── */}
         <div className="w-full md:w-52 shrink-0 flex flex-col gap-2 md:sticky md:top-20 z-10">
 
+          {/* Brand heading — mobile only (desktop shows in NavBar) */}
+          <h1 className="md:hidden text-lg font-bold text-slate-900 tracking-tight mb-1">Teissire Clinic</h1>
+
           {/* Low stock compact alert — above search */}
           <LowStockSidebar items={items} />
 

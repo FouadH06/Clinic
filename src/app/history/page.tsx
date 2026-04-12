@@ -4,7 +4,7 @@ import AuditLogTable from '@/components/history/AuditLogTable'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'History – Teissir Dental Inventory',
+  title: 'History',
   description: 'Full audit log of all inventory movements — restocks, usage, and adjustments.',
 }
 
@@ -26,10 +26,10 @@ export default async function HistoryPage() {
       .then(res =>
         res.error
           ? supabase
-              .from('usage_log')
-              .select('*, item:items(id, name, icon, unit, category, min_stock_threshold, quantity)')
-              .order('used_at', { ascending: false })
-              .limit(1000)
+            .from('usage_log')
+            .select('*, item:items(id, name, icon, unit, category, min_stock_threshold, quantity)')
+            .order('used_at', { ascending: false })
+            .limit(1000)
           : res
       ),
     supabase.from('suppliers').select('id, name').order('name'),

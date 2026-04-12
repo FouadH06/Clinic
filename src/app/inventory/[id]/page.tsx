@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   const item = await getItem(id)
   return {
-    title: item ? `${item.name} – Teissir Dental Inventory` : 'Product Details',
+    title: item ? item.name : 'Product Details',
     description: 'View product details, supplier assignments, and stock history.',
   }
 }
